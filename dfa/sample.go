@@ -4,55 +4,96 @@ import (
 	"fmt"
 )
 
-func sample() {
+func Sample() {
 	// States
-	Starting := State("starting")
-	Running := State("running")
-	Resending := State("resending")
-	Finishing := State("finishing")
-	Exiting := State("exiting")
-	Terminating := State("terminating")
+	se := State("e")
+	s0 := State("0")
+	s1 := State("1")
+	s00 := State("00")
+	s01 := State("01")
+	s10 := State("10")
+	s11 := State("11")
 	// Letters
-	Failure := Letter("failure")
-	SendFailure := Letter("send-failure")
-	SendSuccess := Letter("send-success")
-	EverybodyStarted := Letter("everybody-started")
-	EverybodyFinished := Letter("everybody-finished")
-	ProducersFinished := Letter("producers-finished")
-	Exit := Letter("exit")
+	l0 := Letter("0")
+	l1 := Letter("1")
 
 	inputs := make(chan Letter)
 	defer close(inputs)
 	d := New(inputs)
-	d.SetStartState(Starting)
-	d.SetFinalStates(Exiting, Terminating)
+	d.SetStartState(se)
+	d.SetFinalStates(s11)
 
-	d.SetTransition(Starting, EverybodyStarted, Running)
-	d.SetTransition(Starting, Failure, Exiting)
-	d.SetTransition(Starting, Exit, Exiting)
+	d.SetTransition(se, l0, s0)
+	d.SetTransition(se, l1, s1)
 
-	d.SetTransition(Running, SendFailure, Resending)
-	d.SetTransition(Running, ProducersFinished, Finishing)
-	d.SetTransition(Running, Failure, Exiting)
-	d.SetTransition(Running, Exit, Exiting)
+	d.SetTransition(s0, l0, s00)
+	d.SetTransition(s0, l1, s01)
 
-	d.SetTransition(Resending, SendSuccess, Running)
-	d.SetTransition(Resending, SendFailure, Resending)
-	d.SetTransition(Resending, Failure, Exiting)
-	d.SetTransition(Resending, Exit, Exiting)
+	d.SetTransition(s1, l0, s10)
+	d.SetTransition(s1, l1, s11)
 
-	d.SetTransition(Finishing, EverybodyFinished, Terminating)
-	d.SetTransition(Finishing, Failure, Exiting)
-	d.SetTransition(Finishing, Exit, Exiting)
+	d.SetTransition(s00, l0, s00)
+	d.SetTransition(s00, l1, s01)
+
+	d.SetTransition(s01, l0, s10)
+	d.SetTransition(s01, l1, s11)
+
+	d.SetTransition(s10, l0, s00)
+	d.SetTransition(s10, l1, s01)
+
+	d.SetTransition(s11, l0, s10)
+	d.SetTransition(s11, l1, s11)
 
 	fmt.Println(d.GraphViz())
 
-	d.SetTransitionLogger(func(s State) { fmt.Println(s) })
+	d.Minimize()
 
-	go func() {
-		inputs <- EverybodyStarted
-		inputs <- Failure
-		inputs <- EOF
-	}()
-	fmt.Println(d.Run())
+	fmt.Println(d.GraphViz())
+}
+
+func Sample2() {
+	// States
+	sa := State("a")
+	sb := State("b")
+	sc := State("c")
+	sd := State("d")
+	se := State("e")
+	// sf := State("f")
+	// Letters
+	l0 := Letter("0")
+	l1 := Letter("1")
+
+	inputs := make(chan Letter)
+	defer close(inputs)
+	d := New(inputs)
+	d.SetStartState(sa)
+	d.SetFinalStates(sc, sd, se)
+
+	d.SetTransition(sa, l0, sb)
+	d.SetTransition(sa, l1, sc)
+
+	d.SetTransition(sb, l0, sa)
+	d.SetTransition(sb, l1, sd)
+
+	d.SetTransition(sc, l0, se)
+	// d.SetTransition(sc, l1, sf)
+
+	d.SetTransition(sd, l0, se)
+	// d.SetTransition(sd, l1, sf)
+
+	d.SetTransition(se, l0, se)
+	// d.SetTransition(se, l1, sf)
+
+	// d.SetTransition(sf, l0, sf)
+	// d.SetTransition(sf, l1, sf)
+
+	fmt.Println(d.GraphViz())
+
+	err := d.Determinize()
+	if err != nil {
+		panic(err)
+	}
+	d.Minimize()
+
+	fmt.Println(d.GraphViz())
 }

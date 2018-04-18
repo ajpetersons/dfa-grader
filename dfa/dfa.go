@@ -8,31 +8,36 @@ import (
 	"fmt"
 )
 
-var doneErr = errors.New("out of inputs")
+var errDone = errors.New("out of inputs")
 
+// State describes single state in DFA
 type State string
 
 func (s State) String() string {
 	return string(s)
 }
 
+// Letter describes allowed input symbol
 type Letter string
 
 func (l Letter) String() string {
 	return string(l)
 }
 
+// EOF is used to mark end of input
 var EOF Letter = "EOF"
 
+// DFA describes a dfa with some helper fields
 type DFA struct {
-	q      map[State]bool           // States
-	e      map[Letter]bool          // Alphabet
-	d      map[domainElement]*State // Transition
-	q0     State                    // Start State
-	f      map[State]bool           // Final States
-	input  chan Letter              // Inputs to the DFA
-	stop   chan struct{}            // Stops the DFA
-	logger func(State)              // Logger for transitions
+	q  map[State]bool           // States
+	e  map[Letter]bool          // Alphabet
+	d  map[domainElement]*State // Transition
+	q0 State                    // Start State
+	f  map[State]bool           // Final States
+
+	input  chan Letter   // Inputs to the DFA
+	stop   chan struct{} // Stops the DFA
+	logger func(State)   // Logger for transitions
 }
 
 type domainElement struct {
@@ -40,6 +45,7 @@ type domainElement struct {
 	s State
 }
 
+// New creates empty DFA
 func New(inputs chan Letter) *DFA {
 	return &DFA{
 		q:      make(map[State]bool),
@@ -69,13 +75,23 @@ func (m *DFA) SetTransition(from State, input Letter, to State) error {
 	return nil
 }
 
-// SetStartState, there can be only one.
+// SetLetter adds a new symbol to alphabet
+func (m *DFA) SetLetter(l Letter) {
+	m.e[l] = true
+}
+
+// SetState adds a new state to list of states
+func (m *DFA) SetState(q State) {
+	m.q[q] = true
+}
+
+// SetStartState sets q0, there can be only one.
 func (m *DFA) SetStartState(q0 State) {
 	m.q0 = q0
 }
 
-// SetFinalStates, there can be more than one. If DFA stops when in one of these
-// states, input will be marked as accepted
+// SetFinalStates marks final states, there can be more than one. If DFA stops
+// when in one of these states, input will be marked as accepted
 func (m *DFA) SetFinalStates(f ...State) {
 	for _, q := range f {
 		m.f[q] = true
@@ -89,7 +105,7 @@ func (m *DFA) SetTransitionLogger(logger func(State)) {
 // States returns list of states in the DFA.
 func (m *DFA) States() []State {
 	q := make([]State, 0, len(m.q))
-	for s, _ := range m.q {
+	for s := range m.q {
 		q = append(q, s)
 	}
 	return q
@@ -98,7 +114,7 @@ func (m *DFA) States() []State {
 // Alphabet returns list of letters in the alphabet of the DFA.
 func (m *DFA) Alphabet() []Letter {
 	e := make([]Letter, 0, len(m.e))
-	for l, _ := range m.e {
+	for l := range m.e {
 		e = append(e, l)
 	}
 	return e
@@ -114,7 +130,7 @@ func (m *DFA) Valid() (bool, error) {
 		return false,
 			fmt.Errorf("start state '%v' is not in the set of states", m.q0)
 	}
-	for s, _ := range m.f {
+	for s := range m.f {
 		if _, ok := m.q[s]; !ok {
 			return false,
 				fmt.Errorf("final state '%v' is not in the set of states", s)
@@ -124,11 +140,155 @@ func (m *DFA) Valid() (bool, error) {
 	return true, nil
 }
 
+// Determinize adds missing transitions to automata
+func (m *DFA) Determinize() error {
+	binName := "bin"
+	for m.q[State(binName)] {
+		binName += "_bin"
+	}
+	bin := State(binName)
+	m.SetState(bin)
+
+	for s := range m.q {
+		for l := range m.e {
+			if _, ok := m.d[domainElement{l: l, s: s}]; !ok {
+				err := m.SetTransition(s, l, bin)
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// Minimize removes obsolete transitions and minimizes the DFA
+func (m *DFA) Minimize() {
+	m.removeUnreachable()
+	m.mergeNonDistinguishable()
+}
+
+func (m *DFA) removeUnreachable() {
+	// let reachable_states := {q0};
+	// let new_states := {q0};
+	// do {
+	//     temp := the empty set;
+	//     for each q in new_states do
+	//         for each c in Σ do
+	//             temp := temp ∪ {p such that p = δ(q,c)};
+	//         end;
+	//     end;
+	//     new_states := temp \ reachable_states;
+	//     reachable_states := reachable_states ∪ new_states;
+	// } while (new_states ≠ the empty set);
+	// unreachable_states := Q \ reachable_states;
+	reachable := make(map[State]bool)
+	reachable[m.q0] = true
+	newStates := make(map[State]bool)
+	newStates[m.q0] = true
+	for len(newStates) != 0 {
+		reached := make(map[State]bool)
+		for s := range newStates {
+			for l := range m.e {
+				reached[*m.d[domainElement{s: s, l: l}]] = true
+			}
+		}
+		for s := range reachable {
+			delete(reached, s)
+		}
+		newStates = reached
+		for s := range newStates {
+			reachable[s] = true
+		}
+	}
+	unreachable := make(map[State]bool)
+	for s := range m.q {
+		if !reachable[s] {
+			unreachable[s] = true
+		}
+	}
+
+	for s := range unreachable {
+		if m.f[s] {
+			delete(m.f, s)
+		}
+
+		for l := range m.e {
+			delete(m.d, domainElement{s: s, l: l})
+		}
+	}
+}
+
+func (m *DFA) mergeNonDistinguishable() {
+	type doubleState struct {
+		a, b State
+	}
+	distinguishable := make(map[doubleState]bool)
+	for f := range m.f {
+		for s := range m.q {
+			if !m.f[s] {
+				distinguishable[doubleState{a: s, b: f}] = true
+				distinguishable[doubleState{a: f, b: s}] = true
+			}
+		}
+	}
+
+	for {
+		shouldBreak := true
+		for s1 := range m.q {
+			for s2 := range m.q {
+				if distinguishable[doubleState{a: s1, b: s2}] {
+					continue
+				}
+				for l := range m.e {
+					pair := doubleState{
+						a: *m.d[domainElement{s: s1, l: l}],
+						b: *m.d[domainElement{s: s2, l: l}],
+					}
+					if distinguishable[pair] {
+						shouldBreak = false
+						distinguishable[doubleState{a: s1, b: s2}] = true
+						distinguishable[doubleState{a: s2, b: s1}] = true
+					}
+				}
+			}
+		}
+		if shouldBreak {
+			break
+		}
+	}
+
+	for s1 := range m.q {
+		for s2 := range m.q {
+			if s1 == s2 {
+				continue
+			}
+			if !distinguishable[doubleState{a: s1, b: s2}] {
+				for k, v := range m.d {
+					if *v == s2 {
+						*v = s1
+					}
+					if k.s == s2 {
+						delete(m.d, k)
+						m.d[domainElement{s: s1, l: k.l}] = v
+					}
+				}
+				delete(m.f, s2)
+				if m.q0 == s2 {
+					m.q0 = s1
+				}
+				delete(m.q, s2)
+			}
+		}
+	}
+}
+
 func (m *DFA) doTransition(s State) (State, error) {
 	var next *State
 	l := <-m.input
 	if l == EOF {
-		return s, doneErr
+		return s, errDone
 	}
 	// Reject upfront if letter is not in alphabet.
 	if !m.e[l] {
@@ -172,7 +332,7 @@ func (m *DFA) Run() (State, bool, error) {
 			break
 		}
 		s, err = m.doTransition(s)
-		if err == doneErr {
+		if err == errDone {
 			break
 		}
 		if err != nil {
