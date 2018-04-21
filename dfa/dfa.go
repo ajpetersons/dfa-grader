@@ -46,15 +46,13 @@ type domainElement struct {
 }
 
 // New creates empty DFA
-func New(inputs chan Letter) *DFA {
+func New() *DFA {
 	return &DFA{
-		q:      make(map[State]bool),
-		e:      make(map[Letter]bool),
-		f:      make(map[State]bool),
-		d:      make(map[domainElement]*State),
-		stop:   make(chan struct{}),
-		input:  inputs,
-		logger: func(State) {},
+		q:    make(map[State]bool),
+		e:    make(map[Letter]bool),
+		f:    make(map[State]bool),
+		d:    make(map[domainElement]*State),
+		stop: make(chan struct{}),
 	}
 }
 
@@ -202,20 +200,14 @@ func (m *DFA) removeUnreachable() {
 			reachable[s] = true
 		}
 	}
-	unreachable := make(map[State]bool)
 	for s := range m.q {
 		if !reachable[s] {
-			unreachable[s] = true
-		}
-	}
-
-	for s := range unreachable {
-		if m.f[s] {
 			delete(m.f, s)
-		}
+			delete(m.q, s)
 
-		for l := range m.e {
-			delete(m.d, domainElement{s: s, l: l})
+			for l := range m.e {
+				delete(m.d, domainElement{s: s, l: l})
+			}
 		}
 	}
 }
@@ -311,7 +303,8 @@ func (m *DFA) doTransition(s State) (State, error) {
 // Run the DFA, blocking until Stop is called or inputs run out.
 // Returns the last state and true if the last state was a final state.
 // Use EOF to indicate end of inout
-func (m *DFA) Run() (State, bool, error) {
+func (m *DFA) Run(inputs chan Letter) (State, bool, error) {
+	m.input = inputs
 	valid, err := m.Valid()
 	if !valid {
 		return State(""), false, err
@@ -366,4 +359,77 @@ func (m *DFA) GraphViz() string {
 	}
 	buf.WriteString("}")
 	return buf.String()
+}
+
+// Copy returns copy of original dfa
+func (m *DFA) Copy() *DFA {
+	c := &DFA{
+		q:      make(map[State]bool),
+		e:      make(map[Letter]bool),
+		f:      make(map[State]bool),
+		d:      make(map[domainElement]*State),
+		q0:     m.q0,
+		logger: m.logger,
+		stop:   make(chan struct{}),
+	}
+	for s := range m.q {
+		c.q[s] = true
+	}
+	for l := range m.e {
+		c.e[l] = true
+	}
+	for s := range m.f {
+		c.f[s] = true
+	}
+	for k, v := range m.d {
+		s := *v
+		c.d[k] = &s
+	}
+
+	return c
+}
+
+// Equiv checks if automata is equivalent with second automata t
+// assumes DFA's are minimized - equivalent up to rewording of states
+func (m *DFA) Equiv(t *DFA) bool {
+	if len(m.q) != len(t.q) || len(m.e) != len(t.e) {
+		return false
+	}
+	for l := range m.e {
+		if !t.e[l] {
+			return false
+		}
+	}
+	mapping := make(map[State]State)
+	mapping[m.q0] = t.q0
+	check := make(chan State, len(m.q))
+	defer close(check)
+	check <- m.q0
+
+	for {
+		var parsedState bool
+		select {
+		case s := <-check:
+			for l := range m.e {
+				mTo := *m.d[domainElement{l: l, s: s}]
+				tTo := *t.d[domainElement{l: l, s: mapping[s]}]
+				if v, ok := mapping[mTo]; ok {
+					if v != tTo {
+						return false
+					}
+				} else if m.f[mTo] != t.f[tTo] {
+					return false
+				} else {
+					mapping[mTo] = tTo
+					check <- mTo
+				}
+			}
+		default:
+		}
+		if !parsedState {
+			break
+		}
+	}
+
+	return true
 }

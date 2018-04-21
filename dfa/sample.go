@@ -17,9 +17,7 @@ func Sample() {
 	l0 := Letter("0")
 	l1 := Letter("1")
 
-	inputs := make(chan Letter)
-	defer close(inputs)
-	d := New(inputs)
+	d := New()
 	d.SetStartState(se)
 	d.SetFinalStates(s11)
 
@@ -63,9 +61,7 @@ func Sample2() {
 	l0 := Letter("0")
 	l1 := Letter("1")
 
-	inputs := make(chan Letter)
-	defer close(inputs)
-	d := New(inputs)
+	d := New()
 	d.SetStartState(sa)
 	d.SetFinalStates(sc, sd, se)
 
@@ -94,6 +90,82 @@ func Sample2() {
 		panic(err)
 	}
 	d.Minimize()
+
+	fmt.Println(d.GraphViz())
+}
+
+func Sample3() {
+	// States
+	sa := State("a")
+	sb := State("b")
+	sc := State("c")
+	sd := State("d")
+	se := State("e")
+	// sf := State("f")
+	// Letters
+	l0 := Letter("0")
+	l1 := Letter("1")
+
+	d := New()
+	d.SetStartState(sa)
+	d.SetFinalStates(sc, sd, se)
+
+	d.SetTransition(sa, l0, sb)
+	d.SetTransition(sa, l1, sc)
+
+	d.SetTransition(sb, l0, sa)
+	d.SetTransition(sb, l1, sd)
+
+	d.SetTransition(sc, l0, se)
+	// d.SetTransition(sc, l1, sf)
+
+	d.SetTransition(sd, l0, se)
+	// d.SetTransition(sd, l1, sf)
+
+	d.SetTransition(se, l0, se)
+	// d.SetTransition(se, l1, sf)
+
+	// d.SetTransition(sf, l0, sf)
+	// d.SetTransition(sf, l1, sf)
+
+	err := d.Determinize()
+	if err != nil {
+		panic(err)
+	}
+	d.Minimize()
+	fmt.Println(d.GraphViz())
+
+	dd := New()
+	dd.SetStartState(sa)
+	dd.SetFinalStates(sc, sd, se)
+
+	dd.SetTransition(sa, l0, sb)
+	dd.SetTransition(sa, l1, sc)
+
+	dd.SetTransition(sb, l0, sa)
+	dd.SetTransition(sb, l1, sb)
+
+	dd.SetTransition(sc, l0, se)
+	// dd.SetTransition(sc, l1, sf)
+
+	dd.SetTransition(sd, l0, se)
+	// dd.SetTransition(sd, l1, sf)
+
+	dd.SetTransition(se, l0, se)
+	// dd.SetTransition(se, l1, sf)
+
+	// dd.SetTransition(sf, l0, sf)
+	// dd.SetTransition(sf, l1, sf)
+
+	err = dd.Determinize()
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(dd.GraphViz())
+	dd.Minimize()
+	fmt.Println(dd.GraphViz())
+
+	fmt.Println(d.Equiv(dd))
 
 	fmt.Println(d.GraphViz())
 }
