@@ -5,6 +5,7 @@ import (
 )
 
 func Sample() {
+	//minimize
 	// States
 	se := State("e")
 	s0 := State("0")
@@ -50,6 +51,7 @@ func Sample() {
 }
 
 func Sample2() {
+	//determinize+minimize
 	// States
 	sa := State("a")
 	sb := State("b")
@@ -95,6 +97,7 @@ func Sample2() {
 }
 
 func Sample3() {
+	// equiv
 	// States
 	sa := State("a")
 	sb := State("b")
@@ -168,4 +171,128 @@ func Sample3() {
 	fmt.Println(d.Equiv(dd))
 
 	fmt.Println(d.GraphViz())
+}
+
+func Sample4() {
+	//get words to n
+	// States
+	sa := State("a")
+	sb := State("b")
+	sc := State("c")
+	sd := State("d")
+	se := State("e")
+	// sf := State("f")
+	// Letters
+	l0 := Letter("0")
+	l1 := Letter("1")
+
+	d := New()
+	d.SetStartState(sa)
+	d.SetFinalStates(sc, sd, se)
+
+	d.SetTransition(sa, l0, sb)
+	d.SetTransition(sa, l1, sc)
+
+	d.SetTransition(sb, l0, sa)
+	d.SetTransition(sb, l1, sd)
+
+	d.SetTransition(sc, l0, se)
+	// d.SetTransition(sc, l1, sf)
+
+	d.SetTransition(sd, l0, se)
+	// d.SetTransition(sd, l1, sf)
+
+	d.SetTransition(se, l0, se)
+	// d.SetTransition(se, l1, sf)
+
+	// d.SetTransition(sf, l0, sf)
+	// d.SetTransition(sf, l1, sf)
+
+	err := d.Determinize()
+	if err != nil {
+		panic(err)
+	}
+	d.Minimize()
+	fmt.Println(d.GraphViz())
+
+	words := d.getWordsUpToN(10)
+	for idx, set := range words {
+		fmt.Println(idx, ":")
+		for w, accepted := range set {
+			if accepted {
+				fmt.Println(w)
+			}
+		}
+	}
+}
+
+func Sample5() {
+	// lang-diff
+	// States
+	s0 := State("0")
+	s1 := State("1")
+	s2 := State("2")
+	s3 := State("3")
+	s4 := State("4")
+	s5 := State("5")
+	s6 := State("6")
+	// Letters
+	l0 := Letter("0")
+	l1 := Letter("1")
+
+	d := New()
+	d.SetStartState(s0)
+	d.SetFinalStates(s4, s5)
+
+	d.SetTransition(s0, l0, s1)
+	d.SetTransition(s0, l1, s0)
+
+	d.SetTransition(s1, l0, s1)
+	d.SetTransition(s1, l1, s2)
+
+	d.SetTransition(s2, l0, s3)
+	d.SetTransition(s2, l1, s2)
+
+	d.SetTransition(s3, l0, s3)
+	d.SetTransition(s3, l1, s4)
+
+	d.SetTransition(s4, l0, s5)
+	d.SetTransition(s4, l1, s4)
+
+	d.SetTransition(s5, l0, s5)
+	d.SetTransition(s5, l1, s6)
+
+	d.SetTransition(s6, l0, s6)
+	d.SetTransition(s6, l1, s6)
+
+	fmt.Println(d.GraphViz())
+
+	dd := New()
+	dd.SetStartState(s0)
+	dd.SetFinalStates(s4)
+
+	dd.SetTransition(s0, l0, s1)
+	dd.SetTransition(s0, l1, s0)
+
+	dd.SetTransition(s1, l0, s1)
+	dd.SetTransition(s1, l1, s2)
+
+	dd.SetTransition(s2, l0, s3)
+	dd.SetTransition(s2, l1, s2)
+
+	dd.SetTransition(s3, l0, s3)
+	dd.SetTransition(s3, l1, s4)
+
+	dd.SetTransition(s4, l0, s4)
+	dd.SetTransition(s4, l1, s5)
+
+	dd.SetTransition(s5, l0, s5)
+	dd.SetTransition(s5, l1, s5)
+
+	fmt.Println(dd.GraphViz())
+
+	dr := GetLanguageDifference(dd, d)
+	fmt.Println(dr)
+
+	fmt.Println((1 + 0.5*dr) * (1 + 0.5*dr))
 }
