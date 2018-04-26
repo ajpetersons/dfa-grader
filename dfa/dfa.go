@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"strconv"
 )
 
 var errDone = errors.New("out of inputs")
@@ -57,6 +58,7 @@ func New() *DFA {
 }
 
 // SetTransition adds new transition to DFA
+// if transition already exists, it is overwritten
 func (m *DFA) SetTransition(from State, input Letter, to State) error {
 	if from == State("") || to == State("") {
 		return errors.New("state cannot be defined as the empty string")
@@ -66,9 +68,7 @@ func (m *DFA) SetTransition(from State, input Letter, to State) error {
 	m.q[from] = true
 	m.e[input] = true
 	de := domainElement{l: input, s: from}
-	if _, ok := m.d[de]; !ok {
-		m.d[de] = &to
-	}
+	m.d[de] = &to
 
 	return nil
 }
@@ -90,7 +90,9 @@ func (m *DFA) SetStartState(q0 State) {
 
 // SetFinalStates marks final states, there can be more than one. If DFA stops
 // when in one of these states, input will be marked as accepted
+// Calling this function multiple times overrides previously set final states
 func (m *DFA) SetFinalStates(f ...State) {
+	m.f = make(map[State]bool)
 	for _, q := range f {
 		m.f[q] = true
 	}
@@ -104,6 +106,15 @@ func (m *DFA) SetTransitionLogger(logger func(State)) {
 func (m *DFA) States() []State {
 	q := make([]State, 0, len(m.q))
 	for s := range m.q {
+		q = append(q, s)
+	}
+	return q
+}
+
+// States returns list of final states in the DFA.
+func (m *DFA) FinalStates() []State {
+	q := make([]State, 0, len(m.f))
+	for s := range m.f {
 		q = append(q, s)
 	}
 	return q
@@ -432,4 +443,36 @@ func (m *DFA) Equiv(t *DFA) bool {
 	}
 
 	return true
+}
+
+func compare(m1, m2 *DFA) (bool, error) {
+	var err error
+	m1Min := m1.Copy()
+	err = m1Min.Determinize()
+	if err != nil {
+		return false, err
+	}
+	m1Min.Minimize()
+	m2Min := m2.Copy()
+	err = m2Min.Determinize()
+	if err != nil {
+		return false, err
+	}
+	m2Min.Minimize()
+
+	return m1Min.Equiv(m2Min), nil
+}
+
+// GetNewState creates new state that is not yet used in this dfa
+// created state is not automatically added to the dfa
+func (m *DFA) GetNewState() State {
+	prefix := "auto_created_"
+	var num int
+	for {
+		s := State(prefix + strconv.Itoa(num))
+		if !m.q[s] {
+			return s
+		}
+		num++
+	}
 }

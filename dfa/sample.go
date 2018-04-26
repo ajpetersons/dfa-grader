@@ -296,3 +296,70 @@ func Sample5() {
 
 	fmt.Println((1 + 0.5*dr) * (1 + 0.5*dr))
 }
+
+func Sample6() {
+	// dfa syntax diff
+	// States
+	s0 := State("0")
+	s1 := State("1")
+	s2 := State("2")
+	s3 := State("3")
+	s4 := State("4")
+	s5 := State("5")
+	s6 := State("6")
+	// Letters
+	l0 := Letter("0")
+	l1 := Letter("1")
+
+	d := New()
+	d.SetStartState(s0)
+	d.SetFinalStates(s4, s5)
+
+	d.SetTransition(s0, l0, s1)
+	d.SetTransition(s0, l1, s0)
+
+	d.SetTransition(s1, l0, s1)
+	d.SetTransition(s1, l1, s2)
+
+	d.SetTransition(s2, l0, s3)
+	d.SetTransition(s2, l1, s2)
+
+	d.SetTransition(s3, l0, s3)
+	d.SetTransition(s3, l1, s4)
+
+	d.SetTransition(s4, l0, s5)
+	d.SetTransition(s4, l1, s4)
+
+	d.SetTransition(s5, l0, s5)
+	d.SetTransition(s5, l1, s6)
+
+	d.SetTransition(s6, l0, s6)
+	d.SetTransition(s6, l1, s6)
+
+	dd := New()
+	dd.SetStartState(s0)
+	dd.SetFinalStates(s4, s5)
+
+	dd.SetTransition(s0, l0, s1)
+	dd.SetTransition(s0, l1, s0)
+
+	dd.SetTransition(s1, l0, s1)
+	dd.SetTransition(s1, l1, s2)
+
+	dd.SetTransition(s2, l0, s3)
+	dd.SetTransition(s2, l1, s2)
+
+	dd.SetTransition(s3, l0, s3)
+	dd.SetTransition(s3, l1, s4)
+
+	dd.SetTransition(s4, l0, s5)
+	dd.SetTransition(s4, l1, s4)
+
+	dd.SetTransition(s5, l0, s5)
+	dd.SetTransition(s5, l1, s6)
+
+	dd.SetTransition(s6, l0, s6)
+	dd.SetTransition(s6, l1, s6)
+
+	fmt.Println(GetDFASyntaxDifference(dd, d))
+}

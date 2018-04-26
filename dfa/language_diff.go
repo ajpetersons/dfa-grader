@@ -35,6 +35,7 @@ func (m *DFA) getWordsUpToN(n int) []map[string]bool {
 // differ for the languages
 // m2 is automata that is expected to be received
 func GetLanguageDifference(m1, m2 *DFA) float64 {
+	// TODO: both values configurable
 	n := 2 * len(m2.States())
 	if n < 10 {
 		n = 10
@@ -89,11 +90,12 @@ func GetLanguageDifference(m1, m2 *DFA) float64 {
 	var summaryDiff float64
 
 	var received int
-	for received <= n {
+	// use n+1 because we test words of length from 0 to n
+	for received < n+1 {
 		v := <-nDiffs
 		received++
 		summaryDiff += v
 	}
 
-	return summaryDiff / float64(n)
+	return summaryDiff / float64(n+1)
 }
