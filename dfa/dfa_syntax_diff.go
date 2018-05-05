@@ -2,79 +2,122 @@ package dfa
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 )
 
-var maxDepth int
-var progress []*sync.WaitGroup
+// single depth calculation complexity: O(|Q|^2)
+const maxDepth = 2
 
-func getEditCount(m1, m2 *DFA, depth int, solution chan<- int) {
+var solutionMu = &sync.Mutex{}
+var progress []*sync.WaitGroup // FIXME: cant use globals, they will interfere between simultaneous tasks
+
+func checkEq(m1, m2 *DFA, depth int, solution *int) bool {
+	// check if m1 == m2
+	eq, err := compare(m1, m2)
+	if err != nil {
+		fmt.Println("Could not minimize automata, aborting calculation")
+		return false
+	}
+	if eq {
+		solutionMu.Lock()
+		if *solution > depth {
+			*solution = depth
+		}
+		solutionMu.Unlock()
+	}
+	return eq
+}
+
+func getEditCount(
+	m1, m2 *DFA,
+	depth int, solution *int,
+	start, final, transition bool,
+	lastEdit interface{},
+) {
 	// FIXME: terrible performance. for positive scenarios with small number of
 	// necessary edits we could improve by doing non-recursive function with
 	// linear pace relative to current depth
 	defer progress[depth].Done()
 
-	var err error
-	if depth > maxDepth {
+	if depth > maxDepth || depth > *solution {
 		return
 	}
 
 	// check if m1 == m2
-	eq, err := compare(m1, m2)
-	if err != nil {
-		fmt.Println("Could not minimize automata, aborting calculation")
-		return
-	}
-	if eq {
-		fmt.Println(depth)
+	if checkEq(m1, m2, depth, solution) {
 		return
 	}
 
 	// try different start states
-	for _, s := range m1.States() {
-		m1Copy := m1.Copy()
-		m1Copy.SetStartState(s)
-		progress[depth+1].Add(1)
-		go getEditCount(m1Copy, m2, depth+1, solution)
+	if start {
+		for _, s := range m1.States() {
+			if strings.Compare(string(lastEdit.(State)), string(s)) == 1 {
+				continue
+			}
+
+			m1Copy := m1.Copy()
+			m1Copy.SetStartState(s)
+			progress[depth+1].Add(1)
+			go getEditCount(m1Copy, m2, depth+1, solution, true, true, true, s)
+		}
+
+		lastEdit = State("")
 	}
 
 	// try swapping one state final/non-final
-	for _, s := range m1.States() {
-		m1Copy := m1.Copy()
-		finalStates := m1Copy.FinalStates()
-		var wasFinal bool
-		for idx, f := range finalStates {
-			if f == s {
-				finalStates = append(finalStates[:idx], finalStates[idx+1:]...)
-				wasFinal = true
+	if final {
+		for _, s := range m1.States() {
+			if strings.Compare(string(lastEdit.(State)), string(s)) == 1 {
+				continue
 			}
-		}
-		if !wasFinal {
-			finalStates = append(finalStates, s)
-		}
-		m1Copy.SetFinalStates(finalStates...)
-		progress[depth+1].Add(1)
-		go getEditCount(m1Copy, m2, depth+1, solution)
-	}
 
-	// try adding a new state
-	mCopied := m1.Copy()
-	s := mCopied.GetNewState()
-	for _, l := range mCopied.Alphabet() {
-		mCopied.SetTransition(s, l, s)
+			m1Copy := m1.Copy()
+			finalStates := m1Copy.FinalStates()
+			var wasFinal bool
+			for idx, f := range finalStates {
+				// need loop if we want to remove from final states
+				if f == s {
+					finalStates = append(finalStates[:idx], finalStates[idx+1:]...)
+					wasFinal = true
+					break
+				}
+			}
+			if !wasFinal {
+				finalStates = append(finalStates, s)
+			}
+			m1Copy.SetFinalStates(finalStates...)
+			progress[depth+1].Add(1)
+			go getEditCount(m1Copy, m2, depth+1, solution, false, true, true, s)
+		}
+
+		lastEdit = domainElement{s: "", l: ""}
 	}
-	progress[depth+1].Add(1)
-	go getEditCount(mCopied, m2, depth+1, solution)
 
 	// try switching transition
-	for _, from := range m1.States() {
-		for _, to := range m1.States() {
-			for _, l := range m1.Alphabet() {
-				// greedy
-				m1Copy := m1.Copy()
-				m1Copy.SetTransition(from, l, to)
-				progress[depth+1].Add(1)
-				go getEditCount(m1Copy, m2, depth+1, solution)
+	if transition {
+		for _, from := range m1.States() {
+			for _, to := range m1.States() {
+				for _, l := range m1.Alphabet() {
+					// greedy
+					de := lastEdit.(domainElement)
+					if strings.Compare(string(de.s), string(from)) == 1 {
+						continue
+					}
+					if strings.Compare(string(de.s), string(from)) == 0 &&
+						strings.Compare(string(de.l), string(l)) == 1 {
+						continue
+					}
+					m1Copy := m1.Copy()
+					m1Copy.SetTransition(from, l, to)
+					progress[depth+1].Add(1)
+					go getEditCount(
+						m1Copy, m2,
+						depth+1, solution,
+						false, false, true,
+						domainElement{s: from, l: l},
+					)
+				}
 			}
 		}
 	}
@@ -85,44 +128,35 @@ func getEditCount(m1, m2 *DFA, depth int, solution chan<- int) {
 // m2 is automata that is expected to be received
 // function returns number of edits that was necessary
 func GetDFASyntaxDifference(m1, m2 *DFA) int {
-	maxDepthCalculated := len(m2.States()) * len(m2.Alphabet())
-	maxDepthCalculated = 2
-
-	maxDepth = maxDepthCalculated
-	solutions := make(chan int)
-	defer close(solutions)
+	solution := new(int)
+	*solution = len(m1.States()) * len(m1.Alphabet())
 
 	m2Min := m2.Copy()
 	err := m2Min.Determinize()
 	if err != nil {
-		return maxDepthCalculated
+		return *solution
 	}
 	m2Min.Minimize()
 
+	// add new state
+	// assume that syntax mistakes do not exceed single missing state
+	s := m1.GetNewState()
+	for _, l := range m1.Alphabet() {
+		m1.SetTransition(s, l, s)
+	}
+
 	// +2 to make sure exit condition can be satisfied
-	for i := 0; i < maxDepthCalculated+2; i++ {
+	for i := 0; i < maxDepth+2; i++ {
 		progress = append(progress, &sync.WaitGroup{})
 	}
 
 	progress[0].Add(1)
-	go getEditCount(m1, m2Min, 0, solutions)
+	go getEditCount(m1, m2Min, 0, solution, true, true, true, State(""))
 
-	go func() {
-		for {
-			res, more := <-solutions
-			if !more {
-				return
-			}
-			if res < maxDepth {
-				maxDepth = res
-			}
-		}
-	}()
-
-	for i := 0; i <= maxDepthCalculated; i++ {
+	for i := 0; i < maxDepth+1; i++ {
 		progress[i].Wait()
 		fmt.Printf("Done all edits of size %d\n", i)
 	}
 
-	return maxDepth
+	return *solution
 }

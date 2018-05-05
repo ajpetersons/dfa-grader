@@ -2,6 +2,7 @@ package dfa
 
 import (
 	"fmt"
+	"time"
 )
 
 func Sample() {
@@ -361,5 +362,8 @@ func Sample6() {
 	dd.SetTransition(s6, l0, s6)
 	dd.SetTransition(s6, l1, s6)
 
+	t1 := time.Now()
 	fmt.Println(GetDFASyntaxDifference(dd, d))
+	t2 := time.Now()
+	fmt.Println(t2.Sub(t1))
 }
