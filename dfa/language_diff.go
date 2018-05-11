@@ -33,6 +33,7 @@ func (m *DFA) getWordsUpToN(n int) []map[string]bool {
 
 // GetLanguageDifference calculates score given metric to check how many words
 // differ for the languages
+// Automata MUST be determinized
 // m2 is automata that is expected to be received
 func GetLanguageDifference(m1, m2 *DFA) float64 {
 	// TODO: both values configurable

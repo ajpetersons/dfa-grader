@@ -8,6 +8,7 @@ import (
 
 // single depth calculation complexity: O(|Q|^2)
 const maxDepth = 2
+const DFASyntaxDiffWorstPosScore = maxDepth
 
 var solutionMu = &sync.Mutex{}
 var progress []*sync.WaitGroup // FIXME: cant use globals, they will interfere between simultaneous tasks
@@ -130,6 +131,10 @@ func getEditCount(
 func GetDFASyntaxDifference(m1, m2 *DFA) int {
 	solution := new(int)
 	*solution = len(m1.States()) * len(m1.Alphabet())
+
+	if *solution < 10 {
+		*solution = 10
+	}
 
 	m2Min := m2.Copy()
 	err := m2Min.Determinize()
