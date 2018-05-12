@@ -33,7 +33,7 @@ func checkEq(m1, m2 *DFA, depth int, solution *int) bool {
 func getEditCount(
 	m1, m2 *DFA,
 	depth int, solution *int,
-	start, final, transition bool,
+	state, start, final, transition bool,
 	lastEdit interface{},
 ) {
 	// FIXME: terrible performance. for positive scenarios with small number of
@@ -50,6 +50,23 @@ func getEditCount(
 		return
 	}
 
+	if state {
+		// add new state
+		// assume that syntax mistakes do not exceed single missing state
+		m1Copy := m1.Copy()
+		s := m1Copy.GetNewState()
+		for _, l := range m1Copy.Alphabet() {
+			m1Copy.SetTransition(s, l, s)
+		}
+		progress[depth+1].Add(1)
+		go getEditCount(
+			m1Copy, m2,
+			depth+1, solution,
+			true, true, true, true,
+			lastEdit,
+		)
+	}
+
 	// try different start states
 	if start {
 		for _, s := range m1.States() {
@@ -60,7 +77,12 @@ func getEditCount(
 			m1Copy := m1.Copy()
 			m1Copy.SetStartState(s)
 			progress[depth+1].Add(1)
-			go getEditCount(m1Copy, m2, depth+1, solution, true, true, true, s)
+			go getEditCount(
+				m1Copy, m2,
+				depth+1, solution,
+				false, true, true, true,
+				s,
+			)
 		}
 
 		lastEdit = State("")
@@ -89,7 +111,12 @@ func getEditCount(
 			}
 			m1Copy.SetFinalStates(finalStates...)
 			progress[depth+1].Add(1)
-			go getEditCount(m1Copy, m2, depth+1, solution, false, true, true, s)
+			go getEditCount(
+				m1Copy, m2,
+				depth+1, solution,
+				false, false, true, true,
+				s,
+			)
 		}
 
 		lastEdit = domainElement{s: "", l: ""}
@@ -115,7 +142,7 @@ func getEditCount(
 					go getEditCount(
 						m1Copy, m2,
 						depth+1, solution,
-						false, false, true,
+						false, false, false, true,
 						domainElement{s: from, l: l},
 					)
 				}
@@ -156,7 +183,7 @@ func GetDFASyntaxDifference(m1, m2 *DFA) int {
 	}
 
 	progress[0].Add(1)
-	go getEditCount(m1, m2Min, 0, solution, true, true, true, State(""))
+	go getEditCount(m1, m2Min, 0, solution, true, true, true, true, State(""))
 
 	for i := 0; i < maxDepth+1; i++ {
 		progress[i].Wait()
