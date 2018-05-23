@@ -14,6 +14,7 @@ type automata struct {
 }
 
 type response struct {
+	Status        string  `json:"status"`
 	Message       string  `json:"message"`
 	Error         string  `json:"error,omitempty"`
 	TotalScore    float64 `json:"total_score,omitempty"`

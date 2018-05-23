@@ -1,12 +1,14 @@
 package server
 
 import (
+	"dfa-grader/config"
 	"dfa-grader/dfa"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"math"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -52,6 +54,7 @@ func (h *DFAHandler) HandleDFATest(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		resp := response{
+			Status:  "fail",
 			Message: "Could not parse attempted solution dfa",
 			Error:   err.Error(),
 		}
@@ -62,6 +65,7 @@ func (h *DFAHandler) HandleDFATest(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		resp := response{
+			Status:  "fail",
 			Message: "Could not parse target dfa",
 			Error:   err.Error(),
 		}
@@ -78,33 +82,48 @@ func (h *DFAHandler) HandleDFATest(w http.ResponseWriter, r *http.Request) {
 	if dfaAttemptMin.Equiv(dfaTargetMin) {
 		w.WriteHeader(http.StatusOK)
 		resp := response{
+			Status:     "ok",
 			Message:    "Graded automata",
-			MaxScore:   100.0,
-			TotalScore: 100.0,
+			MaxScore:   config.MaxScore,
+			TotalScore: config.MaxScore,
 		}
 		json.NewEncoder(w).Encode(&resp)
 		return
 	}
 
-	// TODO: to goroutines
-	langDiffScore := dfa.GetLanguageDifference(dfaAttempt, dfaTarget)
-	dfaSyntaxDiffScore := dfa.GetDFASyntaxDifference(dfaAttempt, dfaTarget)
+	var scaledLangDiffScore, scaledDFASyntaxDiffScore float64
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		langDiffScore := dfa.GetLanguageDifference(dfaAttempt, dfaTarget)
+		scaledLangDiffScore = config.MaxScore * langDiffScore
 
-	var scaledDFASyntaxDiffScore float64
-	if dfaSyntaxDiffScore <= dfa.DFASyntaxDiffWorstPosScore {
-		scaledDFASyntaxDiffScore = 1 - (float64(dfaSyntaxDiffScore) / float64(
-			len(dfaAttemptMin.States())*len(dfaAttemptMin.Alphabet()),
-		))
-		scaledDFASyntaxDiffScore *= 100.0
-	}
-	totalScore := math.Max(langDiffScore, scaledDFASyntaxDiffScore)
+		wg.Done()
+	}()
+
+	wg.Add(1)
+	go func() {
+		dfaSyntaxDiffScore := dfa.GetDFASyntaxDifference(dfaAttempt, dfaTarget)
+		if dfaSyntaxDiffScore <= config.DFADiff.MaxDepth {
+			scaled := 1 - float64(dfaSyntaxDiffScore)/float64(
+				len(dfaAttemptMin.States())*len(dfaAttemptMin.Alphabet()),
+			)
+			scaledDFASyntaxDiffScore = scaled * config.MaxScore
+		}
+
+		wg.Done()
+	}()
+	wg.Wait()
+
+	totalScore := math.Max(scaledLangDiffScore, scaledDFASyntaxDiffScore)
 	fmt.Println("Total time to compute grade:", time.Now().Sub(start))
 
 	resp := response{
+		Status:        "ok",
 		Message:       "Graded automata",
-		MaxScore:      100.0,
+		MaxScore:      config.MaxScore,
 		TotalScore:    totalScore,
-		LangDiffScore: 100.0 * langDiffScore,
+		LangDiffScore: scaledLangDiffScore,
 		DFADiffScore:  scaledDFASyntaxDiffScore,
 	}
 	w.WriteHeader(http.StatusOK)

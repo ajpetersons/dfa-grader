@@ -1,14 +1,11 @@
 package dfa
 
 import (
+	"dfa-grader/config"
 	"fmt"
 	"strings"
 	"sync"
 )
-
-// single depth calculation complexity: O(|Q|^2)
-const maxDepth = 2
-const DFASyntaxDiffWorstPosScore = maxDepth
 
 var solutionMu = &sync.Mutex{}
 var progress []*sync.WaitGroup // FIXME: cant use globals, they will interfere between simultaneous tasks
@@ -36,12 +33,9 @@ func getEditCount(
 	state, start, final, transition bool,
 	lastEdit interface{},
 ) {
-	// FIXME: terrible performance. for positive scenarios with small number of
-	// necessary edits we could improve by doing non-recursive function with
-	// linear pace relative to current depth
 	defer progress[depth].Done()
 
-	if depth > maxDepth || depth > *solution {
+	if depth > config.DFADiff.MaxDepth || depth > *solution {
 		return
 	}
 
@@ -159,8 +153,8 @@ func GetDFASyntaxDifference(m1, m2 *DFA) int {
 	solution := new(int)
 	*solution = len(m1.States()) * len(m1.Alphabet())
 
-	if *solution < 10 {
-		*solution = 10
+	if *solution < config.DFADiff.MaxDepth {
+		*solution = config.DFADiff.MaxDepth + 10
 	}
 
 	m2Min := m2.Copy()
@@ -178,14 +172,14 @@ func GetDFASyntaxDifference(m1, m2 *DFA) int {
 	}
 
 	// +2 to make sure exit condition can be satisfied
-	for i := 0; i < maxDepth+2; i++ {
+	for i := 0; i < config.DFADiff.MaxDepth+2; i++ {
 		progress = append(progress, &sync.WaitGroup{})
 	}
 
 	progress[0].Add(1)
 	go getEditCount(m1, m2Min, 0, solution, true, true, true, true, State(""))
 
-	for i := 0; i < maxDepth+1; i++ {
+	for i := 0; i < config.DFADiff.MaxDepth+1; i++ {
 		progress[i].Wait()
 		fmt.Printf("Done all edits of size %d\n", i)
 	}

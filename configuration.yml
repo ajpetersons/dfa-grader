@@ -1,0 +1,8 @@
+maxScore: 100
+langDiff:
+  timeout: 4s
+  maxDepth: 14
+  minDepth: 4
+dfaDiff:
+  timeout: 4s
+  maxDepth: 2

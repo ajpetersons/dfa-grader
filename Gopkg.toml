@@ -25,5 +25,9 @@
   branch = "master"
 
 [[constraint]]
+  name = "github.com/spf13/viper"
+  branch = "master"
+
+[[constraint]]
   name = "github.com/gorilla/mux"
   version = "1.6.1"

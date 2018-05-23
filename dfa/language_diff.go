@@ -1,6 +1,7 @@
 package dfa
 
 import (
+	"dfa-grader/config"
 	"sync"
 )
 
@@ -36,10 +37,13 @@ func (m *DFA) getWordsUpToN(n int) []map[string]bool {
 // Automata MUST be determinized
 // m2 is automata that is expected to be received
 func GetLanguageDifference(m1, m2 *DFA) float64 {
-	// TODO: both values configurable
-	n := 2 * len(m2.States())
-	if n < 10 {
-		n = 10
+	n := config.LangDiff.MaxDepth - len(m2.Alphabet())
+	if len(m2.Alphabet()) == 5 {
+		// worst case
+		n--
+	}
+	if n < config.LangDiff.MaxDepth {
+		n = config.LangDiff.MaxDepth
 	}
 
 	wg := &sync.WaitGroup{}
