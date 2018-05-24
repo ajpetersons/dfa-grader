@@ -216,15 +216,15 @@ func Sample4() {
 	d.Minimize()
 	fmt.Println(d.GraphViz())
 
-	words := d.getWordsUpToN(10)
-	for idx, set := range words {
-		fmt.Println(idx, ":")
-		for w, accepted := range set {
-			if accepted {
-				fmt.Println(w)
-			}
-		}
-	}
+	// words := d.getWordsUpToN(10)
+	// for idx, set := range words {
+	// 	fmt.Println(idx, ":")
+	// 	for w, accepted := range set {
+	// 		if accepted {
+	// 			fmt.Println(w)
+	// 		}
+	// 	}
+	// }
 }
 
 func Sample5() {

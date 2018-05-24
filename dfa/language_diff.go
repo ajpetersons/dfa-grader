@@ -2,34 +2,42 @@ package dfa
 
 import (
 	"dfa-grader/config"
-	"sync"
+	"time"
 )
 
-func (m *DFA) getWordsUpToN(n int) []map[string]bool {
-	var words []map[string]bool
-	var activeStates []map[string]State
+func (m *DFA) getWordsUpToN(n int, returns chan<- map[string]bool, kill <-chan struct{}) {
+	prevStates := make(map[string]State)
 
-	for i := 0; i <= n; i++ {
-		activeStates = append(activeStates, make(map[string]State))
-		words = append(words, make(map[string]bool))
+	prevStates[""] = m.q0
+	returns <- map[string]bool{
+		"": m.f[m.q0],
 	}
 
-	activeStates[0][""] = m.q0
-	words[0][""] = m.f[m.q0]
-
 	for i := 1; i <= n; i++ {
-		for word, state := range activeStates[i-1] {
+		nextStates := make(map[string]State)
+		words := make(map[string]bool)
+
+		for word, state := range prevStates {
 			for l := range m.e {
 				nextState := *m.d[domainElement{l: l, s: state}]
 				nextWord := word + string(l)
 				// automata is deterministic, there is only one path to nextWord
-				activeStates[i][nextWord] = nextState
-				words[i][nextWord] = m.f[nextState]
+				nextStates[nextWord] = nextState
+				words[nextWord] = m.f[nextState]
 			}
 		}
-	}
 
-	return words
+		select {
+		case <-kill:
+			return
+		case returns <- words:
+		}
+
+		prevStates = make(map[string]State)
+		for k, v := range nextStates {
+			prevStates[k] = v
+		}
+	}
 }
 
 // GetLanguageDifference calculates score given metric to check how many words
@@ -46,36 +54,46 @@ func GetLanguageDifference(m1, m2 *DFA) float64 {
 		n = config.LangDiff.MaxDepth
 	}
 
-	wg := &sync.WaitGroup{}
-	wg.Add(2)
-	var words1, words2 []map[string]bool
+	kill := make(chan struct{})
 	go func() {
-		words1 = m1.getWordsUpToN(n)
-		wg.Done()
+		time.Sleep(config.LangDiff.Timeout)
+		close(kill)
 	}()
-	go func() {
-		words2 = m2.getWordsUpToN(n)
-		wg.Done()
-	}()
-	wg.Wait()
+
+	words1 := make(chan map[string]bool)
+	words2 := make(chan map[string]bool)
+
+	go m1.getWordsUpToN(n, words1, kill)
+	go m2.getWordsUpToN(n, words2, kill)
 
 	nDiffs := make(chan float64)
-	defer close(nDiffs)
 
 	for i := 0; i <= n; i++ {
 		go func(n int) {
 			different := make(map[string]bool)
 			// l2 is size of language(m2)
 			var l2 int
+			var w1, w2 map[string]bool
+
+			select {
+			case w1 = <-words1:
+			case <-kill:
+				return
+			}
+			select {
+			case w2 = <-words2:
+			case <-kill:
+				return
+			}
 
 			// for loops implement xor of languages
-			for w, res := range words1[n] {
-				if res != words2[n][w] {
+			for w, res := range w1 {
+				if res != w2[w] {
 					different[w] = true
 				}
 			}
-			for w, res := range words2[n] {
-				if res != words1[n][w] {
+			for w, res := range w2 {
+				if res != w1[w] {
 					different[w] = true
 				}
 				if res {
@@ -97,10 +115,22 @@ func GetLanguageDifference(m1, m2 *DFA) float64 {
 	var received int
 	// use n+1 because we test words of length from 0 to n
 	for received < n+1 {
-		v := <-nDiffs
-		received++
-		summaryDiff += v
+		var end bool
+		select {
+		case v := <-nDiffs:
+			received++
+			summaryDiff += v
+		case <-kill:
+			end = true
+		}
+		if end {
+			break
+		}
 	}
 
-	return summaryDiff / float64(n+1)
+	if received == 0 {
+		return 0.0
+	}
+
+	return summaryDiff / float64(received)
 }
