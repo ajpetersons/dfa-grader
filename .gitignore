@@ -61,3 +61,5 @@ Temporary Items
 vendor/*
 debug
 times/*
+tests/*
+dfa/sample.go
