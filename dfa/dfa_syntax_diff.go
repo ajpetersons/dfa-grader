@@ -148,19 +148,20 @@ func getEditCount(
 // GetDFASyntaxDifference calculates score by measuring amount of edits
 // necessary to transform one dfa into the other
 // m2 is automata that is expected to be received
-// function returns number of edits that was necessary
-func GetDFASyntaxDifference(m1, m2 *DFA) int {
+// function returns result in scale from 0 to 1
+func GetDFASyntaxDifference(m1, m2 *DFA) float64 {
 	solution := new(int)
 	*solution = len(m1.States()) * len(m1.Alphabet())
 
 	if *solution < config.DFADiff.MaxDepth {
 		*solution = config.DFADiff.MaxDepth + 10
 	}
+	noResultScore := *solution
 
 	m2Min := m2.Copy()
 	err := m2Min.Determinize()
 	if err != nil {
-		return *solution
+		return 0.0
 	}
 	m2Min.Minimize()
 
@@ -184,5 +185,12 @@ func GetDFASyntaxDifference(m1, m2 *DFA) int {
 		fmt.Printf("Done all edits of size %d\n", i)
 	}
 
-	return *solution
+	result := 1 - float64(*solution)/float64(
+		len(m2Min.States())*len(m2Min.Alphabet()),
+	)
+	if result < 0.0 || *solution == noResultScore {
+		result = 0.0
+	}
+
+	return result
 }

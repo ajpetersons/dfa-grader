@@ -96,6 +96,7 @@ func (h *DFAHandler) HandleDFATest(w http.ResponseWriter, r *http.Request) {
 	wg.Add(1)
 	go func() {
 		langDiffScore := dfa.GetLanguageDifference(dfaAttempt, dfaTarget)
+
 		scaledLangDiffScore = config.MaxScore * langDiffScore
 
 		wg.Done()
@@ -104,12 +105,8 @@ func (h *DFAHandler) HandleDFATest(w http.ResponseWriter, r *http.Request) {
 	wg.Add(1)
 	go func() {
 		dfaSyntaxDiffScore := dfa.GetDFASyntaxDifference(dfaAttempt, dfaTarget)
-		if dfaSyntaxDiffScore <= config.DFADiff.MaxDepth {
-			scaled := 1 - float64(dfaSyntaxDiffScore)/float64(
-				len(dfaAttemptMin.States())*len(dfaAttemptMin.Alphabet()),
-			)
-			scaledDFASyntaxDiffScore = scaled * config.MaxScore
-		}
+
+		scaledDFASyntaxDiffScore = config.MaxScore * dfaSyntaxDiffScore
 
 		wg.Done()
 	}()
