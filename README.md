@@ -23,7 +23,8 @@ DFA: {
     "transitions": array of TRANSITION, // transitions of DFA
     "start_state": string,              // start state of DFA
     "final_states": array of string,    // accepting states of DFA
-    "alphabet": array of string         // alphabet of DFA
+    "alphabet": array of string,        // alphabet of DFA
+    "states": array of string           // states of DFA
 }
 
 TRANSITION: {
@@ -32,7 +33,6 @@ TRANSITION: {
     "symbol": string    // with symbol
 }
 ```
-Note: DFA states are implied from transitions
 
 Response data:
 ```

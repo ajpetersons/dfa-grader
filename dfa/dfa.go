@@ -102,6 +102,7 @@ func (m *DFA) SetFinalStates(f ...State) {
 	}
 }
 
+// SetTransitionLogger sets function to execute on each transition
 func (m *DFA) SetTransitionLogger(logger func(State)) {
 	m.logger = logger
 }
@@ -124,6 +125,12 @@ func (m *DFA) FinalStates() []State {
 	return q
 }
 
+// StartState returns DFA start state
+func (m *DFA) StartState() State {
+	return m.q0
+}
+
+// IsFinal checks if given state is accepting
 func (m *DFA) IsFinal(s State) bool {
 	return m.f[s]
 }
@@ -295,6 +302,7 @@ func (m *DFA) mergeNonDistinguishable() {
 	}
 }
 
+// TransitionTarget returns state after executing given transition
 func (m *DFA) TransitionTarget(s State, l Letter) (State, error) {
 	next := m.d[domainElement{l: l, s: s}]
 	if next != nil {
@@ -414,9 +422,9 @@ func (m *DFA) Copy() *DFA {
 	return c
 }
 
-// Equiv checks if automata is equivalent with second automata t
+// equiv checks if automata is equivalent with second automata t
 // assumes DFA's are minimized - equivalent up to rewording of states
-func (m *DFA) Equiv(t *DFA) bool {
+func (m *DFA) equiv(t *DFA) bool {
 	if len(m.q) != len(t.q) || len(m.e) != len(t.e) {
 		return false
 	}
@@ -452,7 +460,8 @@ func (m *DFA) Equiv(t *DFA) bool {
 	return true
 }
 
-func compare(m1, m2 *DFA) (bool, error) {
+// Compare minimizes both automata and compares them
+func Compare(m1, m2 *DFA) (bool, error) {
 	var err error
 	m1Min := m1.Copy()
 	err = m1Min.Determinize()
@@ -467,7 +476,7 @@ func compare(m1, m2 *DFA) (bool, error) {
 	}
 	m2Min.Minimize()
 
-	return m1Min.Equiv(m2Min), nil
+	return m1Min.equiv(m2Min), nil
 }
 
 // GetNewState creates new state that is not yet used in this dfa

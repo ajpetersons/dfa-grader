@@ -11,6 +11,7 @@ type automata struct {
 	StartState  string       `json:"start_state"`
 	FinalStates []string     `json:"final_states"`
 	Alphabet    []string     `json:"alphabet"`
+	States      []string     `json:"states"`
 }
 
 type response struct {

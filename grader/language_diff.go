@@ -1,21 +1,27 @@
-package dfa
+package grader
 
 import (
 	"dfa-grader/config"
+	"dfa-grader/dfa"
 	"fmt"
 	"time"
 )
 
-func (m *DFA) getWordsUpToN(n int, returns chan<- map[string]bool, kill <-chan struct{}) {
-	prevStates := make(map[string]State)
+func getWordsUpToN(
+	m *dfa.DFA,
+	n int,
+	returns chan<- map[string]bool,
+	kill <-chan struct{},
+) {
+	prevStates := make(map[string]dfa.State)
 
-	prevStates[""] = m.q0
+	prevStates[""] = m.StartState()
 	returns <- map[string]bool{
-		"": m.IsFinal(m.q0),
+		"": m.IsFinal(m.StartState()),
 	}
 
 	for i := 1; i <= n; i++ {
-		nextStates := make(map[string]State)
+		nextStates := make(map[string]dfa.State)
 		words := make(map[string]bool)
 
 		for word, state := range prevStates {
@@ -38,7 +44,7 @@ func (m *DFA) getWordsUpToN(n int, returns chan<- map[string]bool, kill <-chan s
 		case returns <- words:
 		}
 
-		prevStates = make(map[string]State)
+		prevStates = make(map[string]dfa.State)
 		for k, v := range nextStates {
 			prevStates[k] = v
 		}
@@ -49,7 +55,7 @@ func (m *DFA) getWordsUpToN(n int, returns chan<- map[string]bool, kill <-chan s
 // differ for the languages
 // Automata MUST be determinized
 // m2 is automata that is expected to be received
-func GetLanguageDifference(m1, m2 *DFA) float64 {
+func GetLanguageDifference(m1, m2 *dfa.DFA) float64 {
 	n := config.LangDiff.MaxDepth - len(m2.Alphabet())
 	if len(m2.Alphabet()) == 5 {
 		// worst case
@@ -68,8 +74,8 @@ func GetLanguageDifference(m1, m2 *DFA) float64 {
 	words1 := make(chan map[string]bool)
 	words2 := make(chan map[string]bool)
 
-	go m1.getWordsUpToN(n, words1, kill)
-	go m2.getWordsUpToN(n, words2, kill)
+	go getWordsUpToN(m1, n, words1, kill)
+	go getWordsUpToN(m2, n, words2, kill)
 
 	nDiffs := make(chan float64)
 

@@ -1,7 +1,8 @@
-package dfa
+package grader
 
 import (
 	"dfa-grader/config"
+	"dfa-grader/dfa"
 	"fmt"
 	"strings"
 	"sync"
@@ -10,9 +11,9 @@ import (
 var solutionMu = &sync.Mutex{}
 var progress []*sync.WaitGroup // FIXME: cant use globals, they will interfere between simultaneous tasks
 
-func checkEq(m1, m2 *DFA, depth int, solution *int) bool {
+func checkEq(m1, m2 *dfa.DFA, depth int, solution *int) bool {
 	// check if m1 == m2
-	eq, err := compare(m1, m2)
+	eq, err := dfa.Compare(m1, m2)
 	if err != nil {
 		fmt.Println("Could not minimize automata, aborting calculation")
 		return false
@@ -27,8 +28,13 @@ func checkEq(m1, m2 *DFA, depth int, solution *int) bool {
 	return eq
 }
 
+type domainElement struct {
+	l dfa.Letter
+	s dfa.State
+}
+
 func getEditCount(
-	m1, m2 *DFA,
+	m1, m2 *dfa.DFA,
 	depth int, solution *int,
 	state, start, final, transition bool,
 	lastEdit interface{},
@@ -64,7 +70,7 @@ func getEditCount(
 	// try different start states
 	if start {
 		for _, s := range m1.States() {
-			if strings.Compare(string(lastEdit.(State)), string(s)) == 1 {
+			if strings.Compare(string(lastEdit.(dfa.State)), string(s)) == 1 {
 				continue
 			}
 
@@ -79,13 +85,13 @@ func getEditCount(
 			)
 		}
 
-		lastEdit = State("")
+		lastEdit = dfa.State("")
 	}
 
 	// try swapping one state final/non-final
 	if final {
 		for _, s := range m1.States() {
-			if strings.Compare(string(lastEdit.(State)), string(s)) == 1 {
+			if strings.Compare(string(lastEdit.(dfa.State)), string(s)) == 1 {
 				continue
 			}
 
@@ -149,7 +155,7 @@ func getEditCount(
 // necessary to transform one dfa into the other
 // m2 is automata that is expected to be received
 // function returns result in scale from 0 to 1
-func GetDFASyntaxDifference(m1, m2 *DFA) float64 {
+func GetDFASyntaxDifference(m1, m2 *dfa.DFA) float64 {
 	solution := new(int)
 	*solution = len(m1.States()) * len(m1.Alphabet())
 
@@ -178,7 +184,12 @@ func GetDFASyntaxDifference(m1, m2 *DFA) float64 {
 	}
 
 	progress[0].Add(1)
-	go getEditCount(m1, m2Min, 0, solution, true, true, true, true, State(""))
+	go getEditCount(
+		m1, m2Min,
+		0, solution,
+		true, true, true, true,
+		dfa.State(""),
+	)
 
 	for i := 0; i < config.DFADiff.MaxDepth+1; i++ {
 		progress[i].Wait()

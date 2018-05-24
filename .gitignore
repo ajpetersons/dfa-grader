@@ -62,4 +62,4 @@ vendor/*
 debug
 times/*
 tests/*
-dfa/sample.go
+grader/sample.go

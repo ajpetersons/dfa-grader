@@ -1,0 +1,138 @@
+{
+    "target": {
+        "alphabet": ["0", "1"],
+        "start_state": "0",
+        "final_states": ["3"],
+        "states": ["0", "1", "2", "3", "4", "5"],
+        "transitions": [
+            {
+                "from": "0",
+                "symbol": "0",
+                "to": "1"
+            },
+            {
+                "from": "0",
+                "symbol": "1",
+                "to": "2"
+            },
+            {
+                "from": "1",
+                "symbol": "0",
+                "to": "1"
+            },
+            {
+                "from": "1",
+                "symbol": "1",
+                "to": "1"
+            },
+            {
+                "from": "2",
+                "symbol": "0",
+                "to": "3"
+            },
+            {
+                "from": "2",
+                "symbol": "1",
+                "to": "2"
+            },
+            {
+                "from": "3",
+                "symbol": "0",
+                "to": "1"
+            },
+            {
+                "from": "3",
+                "symbol": "1",
+                "to": "4"
+            },
+            {
+                "from": "4",
+                "symbol": "0",
+                "to": "5"
+            },
+            {
+                "from": "4",
+                "symbol": "1",
+                "to": "4"
+            },
+            {
+                "from": "5",
+                "symbol": "0",
+                "to": "1"
+            },
+            {
+                "from": "5",
+                "symbol": "1",
+                "to": "2"
+            }
+        ]
+    },
+    "attempt": {
+        "alphabet": ["0", "1"],
+        "start_state": "0",
+        "final_states": ["5"],
+        "states": ["0", "1", "2", "3", "4", "5"],
+        "transitions": [
+            {
+                "from": "0",
+                "symbol": "0",
+                "to": "1"
+            },
+            {
+                "from": "0",
+                "symbol": "1",
+                "to": "2"
+            },
+            {
+                "from": "1",
+                "symbol": "0",
+                "to": "1"
+            },
+            {
+                "from": "1",
+                "symbol": "1",
+                "to": "1"
+            },
+            {
+                "from": "2",
+                "symbol": "0",
+                "to": "3"
+            },
+            {
+                "from": "2",
+                "symbol": "1",
+                "to": "2"
+            },
+            {
+                "from": "3",
+                "symbol": "0",
+                "to": "1"
+            },
+            {
+                "from": "3",
+                "symbol": "1",
+                "to": "4"
+            },
+            {
+                "from": "4",
+                "symbol": "0",
+                "to": "5"
+            },
+            {
+                "from": "4",
+                "symbol": "1",
+                "to": "4"
+            },
+            {
+                "from": "5",
+                "symbol": "0",
+                "to": "1"
+            },
+            {
+                "from": "5",
+                "symbol": "1",
+                "to": "2"
+            }
+        ]
+    }
+}

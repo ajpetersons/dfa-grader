@@ -3,6 +3,7 @@ package server
 import (
 	"dfa-grader/config"
 	"dfa-grader/dfa"
+	"dfa-grader/grader"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -27,8 +28,13 @@ func (h *DFAHandler) Register(r *mux.Router) {
 func (h *DFAHandler) HandleDFATest(w http.ResponseWriter, r *http.Request) {
 	body, err := ioutil.ReadAll(http.MaxBytesReader(w, r.Body, 1024*1024*10))
 	if err != nil {
-		http.Error(w, "request data too large",
-			http.StatusRequestEntityTooLarge)
+		w.WriteHeader(http.StatusRequestEntityTooLarge)
+		resp := response{
+			Status:  "fail",
+			Message: "Request data too large",
+			Error:   err.Error(),
+		}
+		json.NewEncoder(w).Encode(&resp)
 		return
 	}
 
@@ -39,10 +45,13 @@ func (h *DFAHandler) HandleDFATest(w http.ResponseWriter, r *http.Request) {
 	}
 	err = json.Unmarshal(body, &data)
 	if err != nil {
-		http.Error(
-			w, fmt.Sprintf("unable to process request data: %s", err.Error()),
-			http.StatusUnprocessableEntity,
-		)
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		resp := response{
+			Status:  "fail",
+			Message: "Unable to process request data",
+			Error:   err.Error(),
+		}
+		json.NewEncoder(w).Encode(&resp)
 		return
 	}
 
@@ -79,7 +88,18 @@ func (h *DFAHandler) HandleDFATest(w http.ResponseWriter, r *http.Request) {
 	dfaAttemptMin.Minimize()
 	dfaTargetMin.Minimize()
 
-	if dfaAttemptMin.Equiv(dfaTargetMin) {
+	eq, err := dfa.Compare(dfaAttemptMin, dfaTargetMin)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		resp := response{
+			Status:  "fail",
+			Message: "Could not minimize DFA",
+			Error:   err.Error(),
+		}
+		json.NewEncoder(w).Encode(&resp)
+		return
+	}
+	if eq {
 		w.WriteHeader(http.StatusOK)
 		resp := response{
 			Status:     "ok",
@@ -95,7 +115,7 @@ func (h *DFAHandler) HandleDFATest(w http.ResponseWriter, r *http.Request) {
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
 	go func() {
-		langDiffScore := dfa.GetLanguageDifference(dfaAttempt, dfaTarget)
+		langDiffScore := grader.GetLanguageDifference(dfaAttempt, dfaTarget)
 
 		scaledLangDiffScore = config.MaxScore * langDiffScore
 
@@ -104,7 +124,7 @@ func (h *DFAHandler) HandleDFATest(w http.ResponseWriter, r *http.Request) {
 
 	wg.Add(1)
 	go func() {
-		dfaSyntaxDiffScore := dfa.GetDFASyntaxDifference(dfaAttempt, dfaTarget)
+		dfaSyntaxDiffScore := grader.GetDFASyntaxDifference(dfaAttempt, dfaTarget)
 
 		scaledDFASyntaxDiffScore = config.MaxScore * dfaSyntaxDiffScore
 
@@ -132,6 +152,10 @@ func createDFA(a automata) *dfa.DFA {
 
 	for _, l := range a.Alphabet {
 		m.SetLetter(dfa.Letter(l))
+	}
+
+	for _, s := range a.States {
+		m.SetState(dfa.State(s))
 	}
 
 	m.SetStartState(dfa.State(a.StartState))
