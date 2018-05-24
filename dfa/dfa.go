@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"sync"
 )
 
 var errDone = errors.New("out of inputs")
@@ -39,6 +40,8 @@ type DFA struct {
 	input  chan Letter   // Inputs to the DFA
 	stop   chan struct{} // Stops the DFA
 	logger func(State)   // Logger for transitions
+
+	mu *sync.Mutex
 }
 
 type domainElement struct {
@@ -54,6 +57,7 @@ func New() *DFA {
 		f:    make(map[State]bool),
 		d:    make(map[domainElement]*State),
 		stop: make(chan struct{}),
+		mu:   &sync.Mutex{},
 	}
 }
 
@@ -118,6 +122,10 @@ func (m *DFA) FinalStates() []State {
 		q = append(q, s)
 	}
 	return q
+}
+
+func (m *DFA) IsFinal(s State) bool {
+	return m.f[s]
 }
 
 // Alphabet returns list of letters in the alphabet of the DFA.
@@ -287,8 +295,19 @@ func (m *DFA) mergeNonDistinguishable() {
 	}
 }
 
+func (m *DFA) TransitionTarget(s State, l Letter) (State, error) {
+	next := m.d[domainElement{l: l, s: s}]
+	if next != nil {
+		return *next, nil
+	}
+
+	return s, fmt.Errorf(
+		"no state transition for input '%v' from '%v'",
+		l, s,
+	)
+}
+
 func (m *DFA) doTransition(s State) (State, error) {
-	var next *State
 	l := <-m.input
 	if l == EOF {
 		return s, errDone
@@ -298,17 +317,12 @@ func (m *DFA) doTransition(s State) (State, error) {
 		return s, fmt.Errorf("letter '%v' is not in alphabet", l)
 	}
 	// Check the transition function.
-	if next = m.d[domainElement{l: l, s: s}]; next != nil {
-		m.logger(*next)
-	} else {
-		// Otherwise stop the DFA with a rejected state,
-		// the DFA has rejected the input sequence.
-		return s, fmt.Errorf(
-			"no state transition for input '%v' from '%v'",
-			l, s,
-		)
+	next, err := m.TransitionTarget(s, l)
+	if err != nil {
+		return s, nil
 	}
-	return *next, nil
+	m.logger(next)
+	return next, nil
 }
 
 // Run the DFA, blocking until Stop is called or inputs run out.
@@ -417,28 +431,21 @@ func (m *DFA) Equiv(t *DFA) bool {
 	defer close(check)
 	check <- m.q0
 
-	for {
-		var parsedState bool
-		select {
-		case s := <-check:
-			for l := range m.e {
-				mTo := *m.d[domainElement{l: l, s: s}]
-				tTo := *t.d[domainElement{l: l, s: mapping[s]}]
-				if v, ok := mapping[mTo]; ok {
-					if v != tTo {
-						return false
-					}
-				} else if m.f[mTo] != t.f[tTo] {
+	for i := 0; i < len(m.States()); i++ {
+		s := <-check
+		for l := range m.e {
+			mTo := *m.d[domainElement{l: l, s: s}]
+			tTo := *t.d[domainElement{l: l, s: mapping[s]}]
+			if v, ok := mapping[mTo]; ok {
+				if v != tTo {
 					return false
-				} else {
-					mapping[mTo] = tTo
-					check <- mTo
 				}
+			} else if m.f[mTo] != t.f[tTo] {
+				return false
+			} else {
+				mapping[mTo] = tTo
+				check <- mTo
 			}
-		default:
-		}
-		if !parsedState {
-			break
 		}
 	}
 

@@ -2,6 +2,7 @@ package dfa
 
 import (
 	"dfa-grader/config"
+	"fmt"
 	"time"
 )
 
@@ -10,7 +11,7 @@ func (m *DFA) getWordsUpToN(n int, returns chan<- map[string]bool, kill <-chan s
 
 	prevStates[""] = m.q0
 	returns <- map[string]bool{
-		"": m.f[m.q0],
+		"": m.IsFinal(m.q0),
 	}
 
 	for i := 1; i <= n; i++ {
@@ -18,12 +19,16 @@ func (m *DFA) getWordsUpToN(n int, returns chan<- map[string]bool, kill <-chan s
 		words := make(map[string]bool)
 
 		for word, state := range prevStates {
-			for l := range m.e {
-				nextState := *m.d[domainElement{l: l, s: state}]
+			for _, l := range m.Alphabet() {
+				nextState, err := m.TransitionTarget(state, l)
+				if err != nil {
+					fmt.Printf("ERROR: %s\n", err.Error())
+					continue
+				}
 				nextWord := word + string(l)
 				// automata is deterministic, there is only one path to nextWord
 				nextStates[nextWord] = nextState
-				words[nextWord] = m.f[nextState]
+				words[nextWord] = m.IsFinal(nextState)
 			}
 		}
 
@@ -68,8 +73,8 @@ func GetLanguageDifference(m1, m2 *DFA) float64 {
 
 	nDiffs := make(chan float64)
 
-	for i := 0; i <= n; i++ {
-		go func(n int) {
+	go func() {
+		for i := 0; i <= n; i++ {
 			different := make(map[string]bool)
 			// l2 is size of language(m2)
 			var l2 int
@@ -105,10 +110,11 @@ func GetLanguageDifference(m1, m2 *DFA) float64 {
 				l2 = 1
 			}
 
-			nDiffs <- float64(len(different)) / float64(l2)
-		}(i)
-
-	}
+			score := float64(len(different)) / float64(l2)
+			fmt.Printf("Lang diff: length %d, score %f\n", i, score)
+			nDiffs <- score
+		}
+	}()
 
 	var summaryDiff float64
 
@@ -122,6 +128,7 @@ func GetLanguageDifference(m1, m2 *DFA) float64 {
 			summaryDiff += v
 		case <-kill:
 			end = true
+			fmt.Println("Lang diff: killed by timeout")
 		}
 		if end {
 			break

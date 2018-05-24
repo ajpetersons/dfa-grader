@@ -182,7 +182,7 @@ func GetDFASyntaxDifference(m1, m2 *DFA) float64 {
 
 	for i := 0; i < config.DFADiff.MaxDepth+1; i++ {
 		progress[i].Wait()
-		fmt.Printf("Done all edits of size %d\n", i)
+		fmt.Printf("Syntax Diff: Done all edits of size %d\n", i)
 	}
 
 	result := 1 - float64(*solution)/float64(
