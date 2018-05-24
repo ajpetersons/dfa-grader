@@ -68,6 +68,8 @@ func (m *DFA) SetTransition(from State, input Letter, to State) error {
 		return errors.New("state cannot be defined as the empty string")
 	}
 
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.q[to] = true
 	m.q[from] = true
 	m.e[input] = true
@@ -79,11 +81,15 @@ func (m *DFA) SetTransition(from State, input Letter, to State) error {
 
 // SetLetter adds a new symbol to alphabet
 func (m *DFA) SetLetter(l Letter) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.e[l] = true
 }
 
 // SetState adds a new state to list of states
 func (m *DFA) SetState(q State) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.q[q] = true
 }
 
@@ -97,6 +103,8 @@ func (m *DFA) SetStartState(q0 State) {
 // Calling this function multiple times overrides previously set final states
 func (m *DFA) SetFinalStates(f ...State) {
 	m.f = make(map[State]bool)
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	for _, q := range f {
 		m.f[q] = true
 	}
@@ -109,6 +117,8 @@ func (m *DFA) SetTransitionLogger(logger func(State)) {
 
 // States returns list of states in the DFA.
 func (m *DFA) States() []State {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	q := make([]State, 0, len(m.q))
 	for s := range m.q {
 		q = append(q, s)
@@ -118,6 +128,8 @@ func (m *DFA) States() []State {
 
 // States returns list of final states in the DFA.
 func (m *DFA) FinalStates() []State {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	q := make([]State, 0, len(m.f))
 	for s := range m.f {
 		q = append(q, s)
@@ -132,11 +144,15 @@ func (m *DFA) StartState() State {
 
 // IsFinal checks if given state is accepting
 func (m *DFA) IsFinal(s State) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	return m.f[s]
 }
 
 // Alphabet returns list of letters in the alphabet of the DFA.
 func (m *DFA) Alphabet() []Letter {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	e := make([]Letter, 0, len(m.e))
 	for l := range m.e {
 		e = append(e, l)
@@ -150,6 +166,8 @@ func (m *DFA) Valid() (bool, error) {
 	if m.q0 == State("") {
 		return false, errors.New("no start state defined")
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if _, ok := m.q[m.q0]; !ok {
 		return false,
 			fmt.Errorf("start state '%v' is not in the set of states", m.q0)
@@ -167,15 +185,18 @@ func (m *DFA) Valid() (bool, error) {
 // Determinize adds missing transitions to automata
 func (m *DFA) Determinize() error {
 	binName := "bin"
+	m.mu.Lock()
 	for m.q[State(binName)] {
 		binName += "_bin"
 	}
+	m.mu.Unlock()
 	bin := State(binName)
 	m.SetState(bin)
 
 	for s := range m.q {
 		for l := range m.e {
-			if _, ok := m.d[domainElement{l: l, s: s}]; !ok {
+			_, err := m.TransitionTarget(s, l)
+			if err != nil {
 				err := m.SetTransition(s, l, bin)
 				if err != nil {
 					return err
@@ -207,6 +228,9 @@ func (m *DFA) removeUnreachable() {
 	//     reachable_states := reachable_states ∪ new_states;
 	// } while (new_states ≠ the empty set);
 	// unreachable_states := Q \ reachable_states;
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	reachable := make(map[State]bool)
 	reachable[m.q0] = true
 	newStates := make(map[State]bool)
@@ -239,6 +263,9 @@ func (m *DFA) removeUnreachable() {
 }
 
 func (m *DFA) mergeNonDistinguishable() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	type doubleState struct {
 		a, b State
 	}
@@ -304,6 +331,9 @@ func (m *DFA) mergeNonDistinguishable() {
 
 // TransitionTarget returns state after executing given transition
 func (m *DFA) TransitionTarget(s State, l Letter) (State, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	next := m.d[domainElement{l: l, s: s}]
 	if next != nil {
 		return *next, nil
@@ -321,9 +351,12 @@ func (m *DFA) doTransition(s State) (State, error) {
 		return s, errDone
 	}
 	// Reject upfront if letter is not in alphabet.
+	m.mu.Lock()
 	if !m.e[l] {
+		m.mu.Unlock()
 		return s, fmt.Errorf("letter '%v' is not in alphabet", l)
 	}
+	m.mu.Unlock()
 	// Check the transition function.
 	next, err := m.TransitionTarget(s, l)
 	if err != nil {
@@ -367,7 +400,7 @@ func (m *DFA) Run(inputs chan Letter) (State, bool, error) {
 	}
 	// check if the current state is accepted or rejected by the DFA.
 	var accepted bool
-	if m.f[s] {
+	if m.IsFinal(s) {
 		accepted = true
 	}
 	return s, accepted, nil
@@ -382,6 +415,9 @@ func (m *DFA) Stop() {
 // any online tool like http://graphs.grevian.org/graph to get
 // a diagram of the DFA.
 func (m *DFA) GraphViz() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	var buf bytes.Buffer
 	buf.WriteString("digraph {\n")
 	for do, to := range m.d {
@@ -396,15 +432,12 @@ func (m *DFA) GraphViz() string {
 
 // Copy returns copy of original dfa
 func (m *DFA) Copy() *DFA {
-	c := &DFA{
-		q:      make(map[State]bool),
-		e:      make(map[Letter]bool),
-		f:      make(map[State]bool),
-		d:      make(map[domainElement]*State),
-		q0:     m.q0,
-		logger: m.logger,
-		stop:   make(chan struct{}),
-	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	c := New()
+	c.q0 = m.q0
+	c.logger = m.logger
 	for s := range m.q {
 		c.q[s] = true
 	}
@@ -425,6 +458,9 @@ func (m *DFA) Copy() *DFA {
 // equiv checks if automata is equivalent with second automata t
 // assumes DFA's are minimized - equivalent up to rewording of states
 func (m *DFA) equiv(t *DFA) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	if len(m.q) != len(t.q) || len(m.e) != len(t.e) {
 		return false
 	}
@@ -439,7 +475,7 @@ func (m *DFA) equiv(t *DFA) bool {
 	defer close(check)
 	check <- m.q0
 
-	for i := 0; i < len(m.States()); i++ {
+	for i := 0; i < len(m.q); i++ {
 		s := <-check
 		for l := range m.e {
 			mTo := *m.d[domainElement{l: l, s: s}]
@@ -482,6 +518,9 @@ func Compare(m1, m2 *DFA) (bool, error) {
 // GetNewState creates new state that is not yet used in this dfa
 // created state is not automatically added to the dfa
 func (m *DFA) GetNewState() State {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	prefix := "auto_created_"
 	var num int
 	for {
