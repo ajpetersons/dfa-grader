@@ -144,6 +144,10 @@ func GetLanguageDifference(m1, m2 *dfa.DFA) float64 {
 	if received == 0 {
 		return 0.0
 	}
+	if summaryDiff == 0 {
+		return 1.0
+	}
 
-	return summaryDiff / float64(received)
+	unscaled := summaryDiff / float64(received)
+	return (6 / (unscaled + 6)) - 0.1
 }

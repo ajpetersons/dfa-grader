@@ -159,7 +159,7 @@ func GetDFASyntaxDifference(m1, m2 *dfa.DFA) float64 {
 	solution := new(int)
 	*solution = len(m1.States()) * len(m1.Alphabet())
 
-	if *solution < config.DFADiff.MaxDepth {
+	if *solution <= config.DFADiff.MaxDepth {
 		*solution = config.DFADiff.MaxDepth + 10
 	}
 	noResultScore := *solution
