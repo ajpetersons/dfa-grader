@@ -68,6 +68,7 @@ func GetLanguageDifference(m1, m2 *dfa.DFA) float64 {
 	kill := make(chan struct{})
 	go func() {
 		time.Sleep(config.LangDiff.Timeout)
+		fmt.Println("Lang diff: Timeouted")
 		close(kill)
 	}()
 

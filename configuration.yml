@@ -3,6 +3,6 @@ langDiff:
   timeout: 4s
   maxDepth: 14
   minDepth: 4
-dfaDiff:
+dfaSyntaxDiff:
   timeout: 4s
   maxDepth: 2

@@ -46,6 +46,7 @@ func main() {
 				if !more {
 					return
 				}
+				fmt.Println("Reloading configuration")
 
 				err := config.Read(*configPath)
 				if err != nil {

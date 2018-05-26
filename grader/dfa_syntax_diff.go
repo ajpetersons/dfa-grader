@@ -6,12 +6,38 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 )
 
-var solutionMu = &sync.Mutex{}
-var progress []*sync.WaitGroup // FIXME: cant use globals, they will interfere between simultaneous tasks
+type dfaSyntaxSolver struct {
+	progress  []*sync.WaitGroup
+	mu        *sync.Mutex
+	solution  *int
+	timeouted chan struct{}
+}
 
-func checkEq(m1, m2 *dfa.DFA, depth int, solution *int) bool {
+func newDFASyntaxSolver(depth int, m *dfa.DFA) *dfaSyntaxSolver {
+	wgs := []*sync.WaitGroup{}
+	for i := 0; i <= depth+1; i++ {
+		wgs = append(wgs, &sync.WaitGroup{})
+	}
+	worst := new(int)
+	*worst = len(m.States()) * len(m.Alphabet())
+	if *worst <= config.DFADiff.MaxDepth {
+		*worst = config.DFADiff.MaxDepth + 10
+	}
+	return &dfaSyntaxSolver{
+		mu:        &sync.Mutex{},
+		progress:  wgs,
+		solution:  worst,
+		timeouted: make(chan struct{}),
+	}
+}
+
+func (solver *dfaSyntaxSolver) checkEq(
+	m1, m2 *dfa.DFA,
+	depth int,
+) bool {
 	// check if m1 == m2
 	eq, err := dfa.Compare(m1, m2)
 	if err != nil {
@@ -19,11 +45,11 @@ func checkEq(m1, m2 *dfa.DFA, depth int, solution *int) bool {
 		return false
 	}
 	if eq {
-		solutionMu.Lock()
-		if *solution > depth {
-			*solution = depth
+		solver.mu.Lock()
+		if *solver.solution > depth {
+			*solver.solution = depth
 		}
-		solutionMu.Unlock()
+		solver.mu.Unlock()
 	}
 	return eq
 }
@@ -33,20 +59,25 @@ type domainElement struct {
 	s dfa.State
 }
 
-func getEditCount(
+func (solver *dfaSyntaxSolver) getEditCount(
 	m1, m2 *dfa.DFA,
-	depth int, solution *int,
+	depth int,
 	state, start, final, transition bool,
 	lastEdit interface{},
 ) {
-	defer progress[depth].Done()
+	defer solver.progress[depth].Done()
+	select {
+	case <-solver.timeouted:
+		return
+	default:
+	}
 
-	if depth > config.DFADiff.MaxDepth || depth > *solution {
+	if depth > config.DFADiff.MaxDepth || depth > *solver.solution {
 		return
 	}
 
 	// check if m1 == m2
-	if checkEq(m1, m2, depth, solution) {
+	if solver.checkEq(m1, m2, depth) {
 		return
 	}
 
@@ -58,10 +89,10 @@ func getEditCount(
 		for _, l := range m1Copy.Alphabet() {
 			m1Copy.SetTransition(s, l, s)
 		}
-		progress[depth+1].Add(1)
-		go getEditCount(
+		solver.progress[depth+1].Add(1)
+		go solver.getEditCount(
 			m1Copy, m2,
-			depth+1, solution,
+			depth+1,
 			true, true, true, true,
 			lastEdit,
 		)
@@ -76,10 +107,10 @@ func getEditCount(
 
 			m1Copy := m1.Copy()
 			m1Copy.SetStartState(s)
-			progress[depth+1].Add(1)
-			go getEditCount(
+			solver.progress[depth+1].Add(1)
+			go solver.getEditCount(
 				m1Copy, m2,
-				depth+1, solution,
+				depth+1,
 				false, true, true, true,
 				s,
 			)
@@ -101,7 +132,10 @@ func getEditCount(
 			for idx, f := range finalStates {
 				// need loop if we want to remove from final states
 				if f == s {
-					finalStates = append(finalStates[:idx], finalStates[idx+1:]...)
+					finalStates = append(
+						finalStates[:idx],
+						finalStates[idx+1:]...,
+					)
 					wasFinal = true
 					break
 				}
@@ -110,10 +144,10 @@ func getEditCount(
 				finalStates = append(finalStates, s)
 			}
 			m1Copy.SetFinalStates(finalStates...)
-			progress[depth+1].Add(1)
-			go getEditCount(
+			solver.progress[depth+1].Add(1)
+			go solver.getEditCount(
 				m1Copy, m2,
-				depth+1, solution,
+				depth+1,
 				false, false, true, true,
 				s,
 			)
@@ -138,10 +172,10 @@ func getEditCount(
 					}
 					m1Copy := m1.Copy()
 					m1Copy.SetTransition(from, l, to)
-					progress[depth+1].Add(1)
-					go getEditCount(
+					solver.progress[depth+1].Add(1)
+					go solver.getEditCount(
 						m1Copy, m2,
-						depth+1, solution,
+						depth+1,
 						false, false, false, true,
 						domainElement{s: from, l: l},
 					)
@@ -156,13 +190,15 @@ func getEditCount(
 // m2 is automata that is expected to be received
 // function returns result in scale from 0 to 1
 func GetDFASyntaxDifference(m1, m2 *dfa.DFA) float64 {
-	solution := new(int)
-	*solution = len(m1.States()) * len(m1.Alphabet())
+	solver := newDFASyntaxSolver(config.DFADiff.MaxDepth, m1)
 
-	if *solution <= config.DFADiff.MaxDepth {
-		*solution = config.DFADiff.MaxDepth + 10
-	}
-	noResultScore := *solution
+	noResultScore := *solver.solution
+
+	go func() {
+		time.Sleep(config.DFADiff.Timeout)
+		fmt.Println("Syntax diff: Timeouted")
+		close(solver.timeouted)
+	}()
 
 	m2Min := m2.Copy()
 	err := m2Min.Determinize()
@@ -178,28 +214,35 @@ func GetDFASyntaxDifference(m1, m2 *dfa.DFA) float64 {
 		m1.SetTransition(s, l, s)
 	}
 
-	// +2 to make sure exit condition can be satisfied
-	for i := 0; i < config.DFADiff.MaxDepth+2; i++ {
-		progress = append(progress, &sync.WaitGroup{})
-	}
-
-	progress[0].Add(1)
-	go getEditCount(
+	solver.progress[0].Add(1)
+	go solver.getEditCount(
 		m1, m2Min,
-		0, solution,
+		0,
 		true, true, true, true,
 		dfa.State(""),
 	)
 
-	for i := 0; i < config.DFADiff.MaxDepth+1; i++ {
-		progress[i].Wait()
-		fmt.Printf("Syntax Diff: Done all edits of size %d\n", i)
+	haveResult := make(chan struct{}, 1)
+	go func() {
+		for i := 0; i < config.DFADiff.MaxDepth+1; i++ {
+			solver.progress[i].Wait()
+			fmt.Printf("Syntax Diff: Done all edits of size %d\n", i)
+		}
+		haveResult <- struct{}{}
+	}()
+
+	// wait until result or timeout
+	select {
+	case <-solver.timeouted:
+	case <-haveResult:
 	}
 
-	result := 1 - float64(*solution)/float64(
+	solver.mu.Lock()
+	defer solver.mu.Unlock()
+	result := 1 - float64(*solver.solution)/float64(
 		len(m2Min.States())*len(m2Min.Alphabet()),
 	)
-	if result < 0.0 || *solution == noResultScore {
+	if result < 0.0 || *solver.solution == noResultScore {
 		result = 0.0
 	}
 

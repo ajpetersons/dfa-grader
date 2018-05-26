@@ -56,6 +56,7 @@ func (h *DFAHandler) HandleDFATest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	start := time.Now()
+	fmt.Println("Received grading request")
 
 	dfaAttempt := createDFA(data.Attempt)
 	dfaTarget := createDFA(data.Target)
