@@ -160,6 +160,20 @@ func (m *DFA) Alphabet() []Letter {
 	return e
 }
 
+// HasState checks if DFA has given state
+func (m *DFA) HasState(s State) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.q[s]
+}
+
+// HasLetter checks if DFA has given letter
+func (m *DFA) HasLetter(l Letter) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.e[l]
+}
+
 // Valid checks if start state exists and is within set of DFA's states. Also
 // checks if all final states are within set of DFA's states
 func (m *DFA) Valid() (bool, error) {
@@ -184,13 +198,7 @@ func (m *DFA) Valid() (bool, error) {
 
 // Determinize adds missing transitions to automata
 func (m *DFA) Determinize() error {
-	binName := "bin"
-	m.mu.Lock()
-	for m.q[State(binName)] {
-		binName += "_bin"
-	}
-	m.mu.Unlock()
-	bin := State(binName)
+	bin := m.GetNewState()
 	m.SetState(bin)
 
 	for s := range m.q {

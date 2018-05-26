@@ -13,19 +13,22 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/pkg/errors"
 )
 
-type DFAHandler struct{}
+// dfaHandler may hold any specific variables needed for this handler
+type dfaHandler struct{}
 
-func NewDFAHandler() *DFAHandler {
-	return &DFAHandler{}
+func newDFAHandler() *dfaHandler {
+	return &dfaHandler{}
 }
 
-func (h *DFAHandler) Register(r *mux.Router) {
-	r.HandleFunc("/grade", h.HandleDFATest).Methods(http.MethodPost)
+// register adds endpoints to this handler
+func (h *dfaHandler) register(r *mux.Router) {
+	r.HandleFunc("/grade", h.handleDFATest).Methods(http.MethodPost)
 }
 
-func (h *DFAHandler) HandleDFATest(w http.ResponseWriter, r *http.Request) {
+func (h *dfaHandler) handleDFATest(w http.ResponseWriter, r *http.Request) {
 	body, err := ioutil.ReadAll(http.MaxBytesReader(w, r.Body, 1024*1024*10))
 	if err != nil {
 		w.WriteHeader(http.StatusRequestEntityTooLarge)
@@ -34,7 +37,7 @@ func (h *DFAHandler) HandleDFATest(w http.ResponseWriter, r *http.Request) {
 			Message: "Request data too large",
 			Error:   err.Error(),
 		}
-		json.NewEncoder(w).Encode(&resp)
+		encodeResponse(w, &resp)
 		return
 	}
 
@@ -51,15 +54,35 @@ func (h *DFAHandler) HandleDFATest(w http.ResponseWriter, r *http.Request) {
 			Message: "Unable to process request data",
 			Error:   err.Error(),
 		}
-		json.NewEncoder(w).Encode(&resp)
+		encodeResponse(w, &resp)
 		return
 	}
 
 	start := time.Now()
 	fmt.Println("Received grading request")
 
-	dfaAttempt := createDFA(data.Attempt)
-	dfaTarget := createDFA(data.Target)
+	dfaAttempt, err := createDFA(data.Attempt)
+	if err != nil {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		resp := response{
+			Status:  "fail",
+			Message: "Unable to create attempted DFA",
+			Error:   err.Error(),
+		}
+		encodeResponse(w, &resp)
+		return
+	}
+	dfaTarget, err := createDFA(data.Target)
+	if err != nil {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		resp := response{
+			Status:  "fail",
+			Message: "Unable to create target DFA",
+			Error:   err.Error(),
+		}
+		encodeResponse(w, &resp)
+		return
+	}
 	err = dfaAttempt.Determinize()
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -68,7 +91,7 @@ func (h *DFAHandler) HandleDFATest(w http.ResponseWriter, r *http.Request) {
 			Message: "Could not parse attempted solution dfa",
 			Error:   err.Error(),
 		}
-		json.NewEncoder(w).Encode(&resp)
+		encodeResponse(w, &resp)
 		return
 	}
 	err = dfaTarget.Determinize()
@@ -79,7 +102,7 @@ func (h *DFAHandler) HandleDFATest(w http.ResponseWriter, r *http.Request) {
 			Message: "Could not parse target dfa",
 			Error:   err.Error(),
 		}
-		json.NewEncoder(w).Encode(&resp)
+		encodeResponse(w, &resp)
 		return
 	}
 
@@ -97,7 +120,7 @@ func (h *DFAHandler) HandleDFATest(w http.ResponseWriter, r *http.Request) {
 			Message: "Could not minimize DFA",
 			Error:   err.Error(),
 		}
-		json.NewEncoder(w).Encode(&resp)
+		encodeResponse(w, &resp)
 		return
 	}
 	if eq {
@@ -108,7 +131,7 @@ func (h *DFAHandler) HandleDFATest(w http.ResponseWriter, r *http.Request) {
 			MaxScore:   config.MaxScore,
 			TotalScore: config.MaxScore,
 		}
-		json.NewEncoder(w).Encode(&resp)
+		encodeResponse(w, &resp)
 		return
 	}
 
@@ -134,7 +157,7 @@ func (h *DFAHandler) HandleDFATest(w http.ResponseWriter, r *http.Request) {
 	wg.Wait()
 
 	totalScore := math.Max(scaledLangDiffScore, scaledDFASyntaxDiffScore)
-	fmt.Println("Total time to compute grade:", time.Now().Sub(start))
+	fmt.Println("Total time to compute grade:", time.Since(start))
 
 	resp := response{
 		Status:        "ok",
@@ -145,35 +168,75 @@ func (h *DFAHandler) HandleDFATest(w http.ResponseWriter, r *http.Request) {
 		DFADiffScore:  scaledDFASyntaxDiffScore,
 	}
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(&resp)
+	encodeResponse(w, &resp)
 }
 
-func createDFA(a automata) *dfa.DFA {
+func encodeResponse(w http.ResponseWriter, data interface{}) {
+	err := json.NewEncoder(w).Encode(data)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+}
+
+// nolint: gocyclo
+func createDFA(a automata) (*dfa.DFA, error) {
 	m := dfa.New()
 
+	if len(a.Alphabet) == 0 {
+		return nil, errors.New("alphabet should not be empty")
+	}
 	for _, l := range a.Alphabet {
 		m.SetLetter(dfa.Letter(l))
 	}
 
+	if len(a.States) == 0 {
+		return nil, errors.New("automata should have at least one state")
+	}
 	for _, s := range a.States {
 		m.SetState(dfa.State(s))
 	}
 
+	if a.StartState == "" {
+		return nil, errors.New("start state should not be empty")
+	}
+	if !m.HasState(dfa.State(a.StartState)) {
+		return nil, errors.New("start state not in list of states")
+	}
 	m.SetStartState(dfa.State(a.StartState))
 
 	finals := []dfa.State{}
 	for _, f := range a.FinalStates {
+		if !m.HasState(dfa.State(f)) {
+			return nil, errors.Errorf(
+				"final state '%s' not in list of states", f,
+			)
+		}
 		finals = append(finals, dfa.State(f))
 	}
 	m.SetFinalStates(finals...)
 
 	for _, t := range a.Transitions {
-		m.SetTransition(
+		if !m.HasState(dfa.State(t.From)) {
+			return nil, errors.Errorf(
+				"transition state '%s' not in list of states", t.From,
+			)
+		}
+		if !m.HasState(dfa.State(t.To)) {
+			return nil, errors.Errorf(
+				"transition state '%s' not in list of states", t.To,
+			)
+		}
+		if !m.HasLetter(dfa.Letter(t.Symbol)) {
+			return nil, errors.Errorf(
+				"transition symbol '%s' not in list of states", t.Symbol,
+			)
+		}
+		m.SetTransition( // nolint: errcheck
 			dfa.State(t.From),
 			dfa.Letter(t.Symbol),
 			dfa.State(t.To),
 		)
 	}
 
-	return m
+	return m, nil
 }
