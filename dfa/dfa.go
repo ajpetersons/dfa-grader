@@ -126,7 +126,7 @@ func (m *DFA) States() []State {
 	return q
 }
 
-// States returns list of final states in the DFA.
+// FinalStates returns list of final states in the DFA.
 func (m *DFA) FinalStates() []State {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -270,13 +270,19 @@ func (m *DFA) removeUnreachable() {
 	}
 }
 
+type doubleState struct {
+	a, b State
+}
+
 func (m *DFA) mergeNonDistinguishable() {
+	distinguishable := m.getDistinguishable()
+	m.deleteIndistinguishable(distinguishable)
+}
+
+func (m *DFA) getDistinguishable() map[doubleState]bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	type doubleState struct {
-		a, b State
-	}
 	distinguishable := make(map[doubleState]bool)
 	for f := range m.f {
 		for s := range m.q {
@@ -287,8 +293,9 @@ func (m *DFA) mergeNonDistinguishable() {
 		}
 	}
 
-	for {
-		shouldBreak := true
+	var allDone bool
+	for !allDone {
+		allDone = true
 		for s1 := range m.q {
 			for s2 := range m.q {
 				if distinguishable[doubleState{a: s1, b: s2}] {
@@ -300,17 +307,20 @@ func (m *DFA) mergeNonDistinguishable() {
 						b: *m.d[domainElement{s: s2, l: l}],
 					}
 					if distinguishable[pair] {
-						shouldBreak = false
+						allDone = false
 						distinguishable[doubleState{a: s1, b: s2}] = true
 						distinguishable[doubleState{a: s2, b: s1}] = true
 					}
 				}
 			}
 		}
-		if shouldBreak {
-			break
-		}
 	}
+	return distinguishable
+}
+
+func (m *DFA) deleteIndistinguishable(distinguishable map[doubleState]bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	for s1 := range m.q {
 		for s2 := range m.q {

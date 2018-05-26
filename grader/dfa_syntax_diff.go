@@ -82,104 +82,136 @@ func (solver *dfaSyntaxSolver) getEditCount(
 	}
 
 	if state {
-		// add new state
-		// assume that syntax mistakes do not exceed single missing state
-		m1Copy := m1.Copy()
-		s := m1Copy.GetNewState()
-		for _, l := range m1Copy.Alphabet() {
-			m1Copy.SetTransition(s, l, s)
-		}
-		solver.progress[depth+1].Add(1)
-		go solver.getEditCount(
-			m1Copy, m2,
-			depth+1,
-			true, true, true, true,
-			lastEdit,
-		)
+		solver.tryAddState(m1, m2, depth, lastEdit)
 	}
 
 	// try different start states
 	if start {
-		for _, s := range m1.States() {
-			if strings.Compare(string(lastEdit.(dfa.State)), string(s)) == 1 {
-				continue
-			}
-
-			m1Copy := m1.Copy()
-			m1Copy.SetStartState(s)
-			solver.progress[depth+1].Add(1)
-			go solver.getEditCount(
-				m1Copy, m2,
-				depth+1,
-				false, true, true, true,
-				s,
-			)
-		}
+		solver.tryChangeStart(m1, m2, depth, lastEdit)
 
 		lastEdit = dfa.State("")
 	}
 
 	// try swapping one state final/non-final
 	if final {
-		for _, s := range m1.States() {
-			if strings.Compare(string(lastEdit.(dfa.State)), string(s)) == 1 {
-				continue
-			}
-
-			m1Copy := m1.Copy()
-			finalStates := m1Copy.FinalStates()
-			var wasFinal bool
-			for idx, f := range finalStates {
-				// need loop if we want to remove from final states
-				if f == s {
-					finalStates = append(
-						finalStates[:idx],
-						finalStates[idx+1:]...,
-					)
-					wasFinal = true
-					break
-				}
-			}
-			if !wasFinal {
-				finalStates = append(finalStates, s)
-			}
-			m1Copy.SetFinalStates(finalStates...)
-			solver.progress[depth+1].Add(1)
-			go solver.getEditCount(
-				m1Copy, m2,
-				depth+1,
-				false, false, true, true,
-				s,
-			)
-		}
+		solver.tryChangeFinal(m1, m2, depth, lastEdit)
 
 		lastEdit = domainElement{s: "", l: ""}
 	}
 
 	// try switching transition
 	if transition {
-		for _, from := range m1.States() {
-			for _, to := range m1.States() {
-				for _, l := range m1.Alphabet() {
-					// greedy
-					de := lastEdit.(domainElement)
-					if strings.Compare(string(de.s), string(from)) == 1 {
-						continue
-					}
-					if strings.Compare(string(de.s), string(from)) == 0 &&
-						strings.Compare(string(de.l), string(l)) == 1 {
-						continue
-					}
-					m1Copy := m1.Copy()
-					m1Copy.SetTransition(from, l, to)
-					solver.progress[depth+1].Add(1)
-					go solver.getEditCount(
-						m1Copy, m2,
-						depth+1,
-						false, false, false, true,
-						domainElement{s: from, l: l},
-					)
+		solver.tryChangeTransition(m1, m2, depth, lastEdit)
+	}
+}
+
+func (solver *dfaSyntaxSolver) tryAddState(
+	m1, m2 *dfa.DFA,
+	depth int,
+	lastEdit interface{},
+) {
+	// add new state
+	// assume that syntax mistakes do not exceed single missing state
+	m1Copy := m1.Copy()
+	s := m1Copy.GetNewState()
+	for _, l := range m1Copy.Alphabet() {
+		m1Copy.SetTransition(s, l, s) // nolint: errcheck,gas
+	}
+	solver.progress[depth+1].Add(1)
+	go solver.getEditCount(
+		m1Copy, m2,
+		depth+1,
+		true, true, true, true,
+		lastEdit,
+	)
+}
+
+func (solver *dfaSyntaxSolver) tryChangeStart(
+	m1, m2 *dfa.DFA,
+	depth int,
+	lastEdit interface{},
+) {
+	for _, s := range m1.States() {
+		if strings.Compare(string(lastEdit.(dfa.State)), string(s)) == 1 {
+			continue
+		}
+
+		m1Copy := m1.Copy()
+		m1Copy.SetStartState(s)
+		solver.progress[depth+1].Add(1)
+		go solver.getEditCount(
+			m1Copy, m2,
+			depth+1,
+			false, true, true, true,
+			s,
+		)
+	}
+}
+
+func (solver *dfaSyntaxSolver) tryChangeFinal(
+	m1, m2 *dfa.DFA,
+	depth int,
+	lastEdit interface{},
+) {
+	for _, s := range m1.States() {
+		if strings.Compare(string(lastEdit.(dfa.State)), string(s)) == 1 {
+			continue
+		}
+
+		m1Copy := m1.Copy()
+		finalStates := m1Copy.FinalStates()
+		var wasFinal bool
+		for idx, f := range finalStates {
+			// need loop if we want to remove from final states
+			if f == s {
+				finalStates = append(
+					finalStates[:idx],
+					finalStates[idx+1:]...,
+				)
+				wasFinal = true
+				break
+			}
+		}
+		if !wasFinal {
+			finalStates = append(finalStates, s)
+		}
+		m1Copy.SetFinalStates(finalStates...)
+		solver.progress[depth+1].Add(1)
+		go solver.getEditCount(
+			m1Copy, m2,
+			depth+1,
+			false, false, true, true,
+			s,
+		)
+	}
+}
+
+func (solver *dfaSyntaxSolver) tryChangeTransition(
+	m1, m2 *dfa.DFA,
+	depth int,
+	lastEdit interface{},
+) {
+	for _, from := range m1.States() {
+		for _, to := range m1.States() {
+			for _, l := range m1.Alphabet() {
+				// greedy
+				de := lastEdit.(domainElement)
+				if strings.Compare(string(de.s), string(from)) == 1 {
+					continue
 				}
+				if strings.Compare(string(de.s), string(from)) == 0 &&
+					strings.Compare(string(de.l), string(l)) == 1 {
+					continue
+				}
+				m1Copy := m1.Copy()
+				m1Copy.SetTransition(from, l, to) // nolint: errcheck,gas
+				solver.progress[depth+1].Add(1)
+				go solver.getEditCount(
+					m1Copy, m2,
+					depth+1,
+					false, false, false, true,
+					domainElement{s: from, l: l},
+				)
 			}
 		}
 	}
@@ -206,13 +238,6 @@ func GetDFASyntaxDifference(m1, m2 *dfa.DFA) float64 {
 		return 0.0
 	}
 	m2Min.Minimize()
-
-	// add new state
-	// assume that syntax mistakes do not exceed single missing state
-	s := m1.GetNewState()
-	for _, l := range m1.Alphabet() {
-		m1.SetTransition(s, l, s)
-	}
 
 	solver.progress[0].Add(1)
 	go solver.getEditCount(

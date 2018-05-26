@@ -72,6 +72,6 @@ func main() {
 		}()
 
 		<-stop
-		webServer.Shutdown(context.Background())
+		webServer.Shutdown(context.Background()) // nolint: gas, errcheck
 	}
 }

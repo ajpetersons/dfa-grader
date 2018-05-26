@@ -51,6 +51,55 @@ func getWordsUpToN(
 	}
 }
 
+// nolint: gocyclo
+func calculateLangDiff(
+	n int,
+	words1, words2 <-chan map[string]bool,
+	kill chan struct{},
+	scores chan<- float64,
+) {
+	for i := 0; i <= n; i++ {
+		different := make(map[string]bool)
+		// l2 is size of language(m2)
+		var l2 int
+		var w1, w2 map[string]bool
+
+		select {
+		case w1 = <-words1:
+		case <-kill:
+			return
+		}
+		select {
+		case w2 = <-words2:
+		case <-kill:
+			return
+		}
+
+		// for loops implement xor of languages
+		for w, res := range w1 {
+			if res != w2[w] {
+				different[w] = true
+			}
+		}
+		for w, res := range w2 {
+			if res != w1[w] {
+				different[w] = true
+			}
+			if res {
+				l2++
+			}
+		}
+
+		if l2 == 0 {
+			l2 = 1
+		}
+
+		score := float64(len(different)) / float64(l2)
+		fmt.Printf("Lang diff: length %d, score %f\n", i, score)
+		scores <- score
+	}
+}
+
 // GetLanguageDifference calculates score given metric to check how many words
 // differ for the languages
 // Automata MUST be determinized
@@ -80,48 +129,7 @@ func GetLanguageDifference(m1, m2 *dfa.DFA) float64 {
 
 	nDiffs := make(chan float64)
 
-	go func() {
-		for i := 0; i <= n; i++ {
-			different := make(map[string]bool)
-			// l2 is size of language(m2)
-			var l2 int
-			var w1, w2 map[string]bool
-
-			select {
-			case w1 = <-words1:
-			case <-kill:
-				return
-			}
-			select {
-			case w2 = <-words2:
-			case <-kill:
-				return
-			}
-
-			// for loops implement xor of languages
-			for w, res := range w1 {
-				if res != w2[w] {
-					different[w] = true
-				}
-			}
-			for w, res := range w2 {
-				if res != w1[w] {
-					different[w] = true
-				}
-				if res {
-					l2++
-				}
-			}
-
-			if l2 == 0 {
-				l2 = 1
-			}
-
-			score := float64(len(different)) / float64(l2)
-			fmt.Printf("Lang diff: length %d, score %f\n", i, score)
-			nDiffs <- score
-		}
-	}()
+	go calculateLangDiff(n, words1, words2, kill, nDiffs)
 
 	var summaryDiff float64
 
