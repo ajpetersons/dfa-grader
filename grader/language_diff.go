@@ -110,8 +110,8 @@ func GetLanguageDifference(m1, m2 *dfa.DFA) float64 {
 		// worst case
 		n--
 	}
-	if n < config.LangDiff.MaxDepth {
-		n = config.LangDiff.MaxDepth
+	if n < config.LangDiff.MinDepth {
+		n = config.LangDiff.MinDepth
 	}
 
 	kill := make(chan struct{})
