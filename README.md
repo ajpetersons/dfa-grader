@@ -10,10 +10,14 @@ A tool written in GO that grades DFA solutions
 - For additional help use `go run main.go -h`
 
 
+## WEB access
+Currently the tool is deployed on `dfatool.peetersons.id.lv` for demonstration purposes.
+
+Grading functionality is available under `POST /grade` endpoint.
+
 ## Data
 Server accepts such data:
 ```
-POST /grade
 {
     "attempt": DFA,     // student attempt
     "target": DFA       // expected automaton

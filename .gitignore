@@ -63,3 +63,4 @@ debug
 times/*
 tests/*
 grader/sample.go
+dfa-grader
